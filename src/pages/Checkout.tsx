@@ -1,0 +1,438 @@
+import { useState, useEffect } from "react";
+import { useSearchParams, useNavigate, Link } from "react-router-dom";
+import Header from "@/components/Header";
+import Footer from "@/components/Footer";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ranks, crates, moneyPackages, formatPrice } from "@/lib/products";
+import { Shield, Package, Clock, CreditCard, User, MessageCircle, Gift, ArrowLeft, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { Helmet } from "react-helmet-async";
+
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
+
+const Checkout = () => {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const type = searchParams.get("type");
+  const id = searchParams.get("id");
+
+  const [minecraftUsername, setMinecraftUsername] = useState("");
+  const [discordUsername, setDiscordUsername] = useState("");
+  const [isGift, setIsGift] = useState(false);
+  const [giftTo, setGiftTo] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
+
+  // Get product info
+  let product: any = null;
+  let productName = "";
+  let productPrice = 0;
+
+  if (type === "rank") {
+    product = ranks.find((r) => r.id === id);
+    if (product) {
+      productName = `${product.name} Rank`;
+      productPrice = product.price;
+    }
+  } else if (type === "crate") {
+    product = crates.find((c) => c.id === id);
+    if (product) {
+      productName = product.name;
+      productPrice = product.price;
+    }
+  } else if (type === "money") {
+    product = moneyPackages.find((m) => m.id === id);
+    if (product) {
+      productName = `${product.amount} In-Game Money`;
+      productPrice = product.price;
+    }
+  }
+
+  // Calculate final price with coupon
+  const calculateFinalPrice = () => {
+    if (!appliedCoupon) return productPrice;
+    if (appliedCoupon.type === "flat") {
+      return Math.max(0, productPrice - appliedCoupon.value);
+    } else {
+      return Math.round(productPrice * (1 - appliedCoupon.value / 100));
+    }
+  };
+
+  const finalPrice = calculateFinalPrice();
+
+  // Load Razorpay script
+  useEffect(() => {
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    document.body.appendChild(script);
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
+
+  const applyCoupon = async () => {
+    if (!couponCode.trim()) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("coupons")
+        .select("*")
+        .eq("code", couponCode.toUpperCase())
+        .eq("is_active", true)
+        .single();
+
+      if (error || !data) {
+        toast.error("Invalid or expired coupon code");
+        return;
+      }
+
+      if (data.max_uses && data.uses_count >= data.max_uses) {
+        toast.error("This coupon has reached its usage limit");
+        return;
+      }
+
+      if (data.expires_at && new Date(data.expires_at) < new Date()) {
+        toast.error("This coupon has expired");
+        return;
+      }
+
+      setAppliedCoupon(data);
+      toast.success("Coupon applied successfully!");
+    } catch (err) {
+      toast.error("Failed to apply coupon");
+    }
+  };
+
+  const handlePayment = async () => {
+    if (!minecraftUsername.trim()) {
+      toast.error("Please enter your Minecraft username");
+      return;
+    }
+    if (!discordUsername.trim()) {
+      toast.error("Please enter your Discord username");
+      return;
+    }
+    if (isGift && !giftTo.trim()) {
+      toast.error("Please enter the gift recipient's Minecraft username");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Create order via edge function
+      const { data, error } = await supabase.functions.invoke("create-order", {
+        body: {
+          productType: type,
+          productId: id,
+          productName,
+          amount: finalPrice,
+          minecraftUsername: minecraftUsername.trim(),
+          discordUsername: discordUsername.trim(),
+          giftTo: isGift ? giftTo.trim() : null,
+          couponId: appliedCoupon?.id || null,
+        },
+      });
+
+      if (error) throw error;
+
+      const { razorpayOrderId, orderId, razorpayKeyId } = data;
+
+      // Open Razorpay checkout
+      const options = {
+        key: razorpayKeyId,
+        amount: finalPrice * 100,
+        currency: "INR",
+        name: "Axis Economy Store",
+        description: productName,
+        order_id: razorpayOrderId,
+        handler: async function (response: any) {
+          // Verify payment
+          const { error: verifyError } = await supabase.functions.invoke("verify-payment", {
+            body: {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              orderId,
+            },
+          });
+
+          if (verifyError) {
+            navigate(`/payment-status?status=failed&order=${orderId}`);
+          } else {
+            navigate(`/payment-status?status=success&order=${orderId}`);
+          }
+        },
+        prefill: {
+          name: minecraftUsername,
+        },
+        theme: {
+          color: "#10b981",
+        },
+        modal: {
+          ondismiss: function () {
+            setLoading(false);
+          },
+        },
+      };
+
+      const razorpay = new window.Razorpay(options);
+      razorpay.open();
+    } catch (err: any) {
+      console.error("Payment error:", err);
+      toast.error(err.message || "Failed to create order");
+      setLoading(false);
+    }
+  };
+
+  if (!product) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="pt-24 pb-20">
+          <div className="container mx-auto px-4 text-center">
+            <h1 className="font-display text-2xl font-bold mb-4">Product Not Found</h1>
+            <Button asChild>
+              <Link to="/store">Back to Store</Link>
+            </Button>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <Helmet>
+        <title>Checkout - Axis Economy Store</title>
+        <meta name="description" content="Complete your purchase securely with Razorpay." />
+      </Helmet>
+
+      <div className="min-h-screen bg-background">
+        <Header />
+
+        <main className="pt-24 pb-20">
+          <div className="container mx-auto px-4 max-w-4xl">
+            {/* Back button */}
+            <Link
+              to="/store"
+              className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-8 transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to Store
+            </Link>
+
+            <div className="grid lg:grid-cols-2 gap-8">
+              {/* Order Summary */}
+              <div className="glass-card p-6">
+                <h2 className="font-display text-xl font-bold mb-6 flex items-center gap-2">
+                  <Package className="w-5 h-5 text-primary" />
+                  Order Summary
+                </h2>
+
+                <div className="space-y-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="font-semibold text-foreground">{productName}</p>
+                      <p className="text-sm text-muted-foreground capitalize">{type}</p>
+                    </div>
+                    <p className="font-display font-bold text-lg text-foreground">
+                      {formatPrice(productPrice)}
+                    </p>
+                  </div>
+
+                  {appliedCoupon && (
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-primary">Coupon: {appliedCoupon.code}</span>
+                      <span className="text-primary">
+                        -{appliedCoupon.type === "flat"
+                          ? formatPrice(appliedCoupon.value)
+                          : `${appliedCoupon.value}%`}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="border-t border-border pt-4">
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold">Total</span>
+                      <span className="font-display font-bold text-xl text-primary">
+                        {formatPrice(finalPrice)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Coupon section */}
+                <div className="mt-6 pt-6 border-t border-border">
+                  <Label className="text-sm font-medium mb-2 block">Have a coupon?</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Enter code"
+                      value={couponCode}
+                      onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                      className="uppercase"
+                      disabled={!!appliedCoupon}
+                    />
+                    <Button
+                      variant="outline"
+                      onClick={applyCoupon}
+                      disabled={!!appliedCoupon}
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Info badges */}
+                <div className="mt-6 space-y-2">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Clock className="w-4 h-4 text-primary" />
+                    <span>{type === "rank" ? "30 days duration" : "Instant delivery"}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Shield className="w-4 h-4 text-primary" />
+                    <span>Secure Razorpay payment</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Checkout Form */}
+              <div className="glass-card p-6">
+                <h2 className="font-display text-xl font-bold mb-6 flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-primary" />
+                  Checkout
+                </h2>
+
+                <div className="space-y-5">
+                  {/* Minecraft Username */}
+                  <div className="space-y-2">
+                    <Label htmlFor="minecraft" className="flex items-center gap-2">
+                      <User className="w-4 h-4" />
+                      Minecraft Username <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="minecraft"
+                      placeholder="Enter your exact username"
+                      value={minecraftUsername}
+                      onChange={(e) => setMinecraftUsername(e.target.value)}
+                      className="bg-muted/50"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Make sure this matches your in-game name exactly
+                    </p>
+                  </div>
+
+                  {/* Discord Username */}
+                  <div className="space-y-2">
+                    <Label htmlFor="discord" className="flex items-center gap-2">
+                      <MessageCircle className="w-4 h-4" />
+                      Discord Username <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="discord"
+                      placeholder="username#0000 or username"
+                      value={discordUsername}
+                      onChange={(e) => setDiscordUsername(e.target.value)}
+                      className="bg-muted/50"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      We'll contact you here if there are any issues
+                    </p>
+                  </div>
+
+                  {/* Gift option */}
+                  <div className="space-y-3">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="gift"
+                        checked={isGift}
+                        onCheckedChange={(checked) => setIsGift(checked as boolean)}
+                      />
+                      <Label htmlFor="gift" className="flex items-center gap-2 cursor-pointer">
+                        <Gift className="w-4 h-4 text-primary" />
+                        This is a gift for someone else
+                      </Label>
+                    </div>
+
+                    {isGift && (
+                      <div className="space-y-2 pl-6">
+                        <Label htmlFor="giftTo">
+                          Recipient's Minecraft Username <span className="text-destructive">*</span>
+                        </Label>
+                        <Input
+                          id="giftTo"
+                          placeholder="Enter recipient's username"
+                          value={giftTo}
+                          onChange={(e) => setGiftTo(e.target.value)}
+                          className="bg-muted/50"
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Payment info */}
+                  <div className="bg-muted/30 rounded-lg p-4 text-sm text-muted-foreground space-y-2">
+                    <p className="flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-primary" />
+                      Payments are processed securely via Razorpay.
+                    </p>
+                    <p>We do not store your card or UPI details.</p>
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      <span className="bg-muted px-2 py-1 rounded text-xs">UPI</span>
+                      <span className="bg-muted px-2 py-1 rounded text-xs">Cards</span>
+                      <span className="bg-muted px-2 py-1 rounded text-xs">Netbanking</span>
+                      <span className="bg-muted px-2 py-1 rounded text-xs">Wallets</span>
+                    </div>
+                  </div>
+
+                  {/* Pay button */}
+                  <Button
+                    variant="hero"
+                    size="xl"
+                    className="w-full"
+                    onClick={handlePayment}
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <Shield className="w-5 h-5" />
+                        Pay Securely {formatPrice(finalPrice)}
+                      </>
+                    )}
+                  </Button>
+
+                  <p className="text-xs text-center text-muted-foreground">
+                    By completing this purchase, you agree to our{" "}
+                    <Link to="/terms" className="text-primary hover:underline">
+                      Terms & Refund Policy
+                    </Link>
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <Footer />
+      </div>
+    </>
+  );
+};
+
+export default Checkout;
