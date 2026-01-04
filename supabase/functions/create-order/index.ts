@@ -11,9 +11,9 @@ serve(async (req) => {
   }
 
   try {
-    const { productType, productId, productName, amount, minecraftUsername, discordUsername, giftTo, couponId } = await req.json();
+    const { productType, productId, productName, amount, minecraftUsername, discordUsername, giftTo, couponId, userId, userEmail } = await req.json();
 
-    console.log("Creating order:", { productType, productId, productName, amount, minecraftUsername, couponId });
+    console.log("Creating order:", { productType, productId, productName, amount, minecraftUsername, couponId, userId });
 
     const orderId = `AXS${Date.now()}${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
@@ -71,6 +71,8 @@ serve(async (req) => {
         gift_to: giftTo,
         payment_status: "pending",
         delivery_status: "pending",
+        user_id: userId || null,
+        user_email: userEmail || null,
       }),
     });
 
@@ -114,7 +116,7 @@ serve(async (req) => {
       body: JSON.stringify({
         type: "info",
         message: `Order created: ${orderId} for ${productName}`,
-        metadata: { orderId, productName, amount, minecraftUsername, couponId },
+        metadata: { orderId, productName, amount, minecraftUsername, couponId, userId },
       }),
     });
 

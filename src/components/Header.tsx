@@ -1,11 +1,37 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Crown, Menu, X } from "lucide-react";
-import { useState } from "react";
+import { Crown, Menu, X, User, ShoppingBag, LogOut } from "lucide-react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const Header = () => {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
 
   const navLinks = [
     { to: "/", label: "Home" },
@@ -53,8 +79,38 @@ const Header = () => {
             </a>
           </nav>
 
-          {/* CTA Button */}
-          <div className="hidden md:block">
+          {/* CTA + User Buttons */}
+          <div className="hidden md:flex items-center gap-3">
+            {user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <User className="w-4 h-4" />
+                    {user.email?.split('@')[0]}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem asChild>
+                    <Link to="/purchases" className="flex items-center gap-2 cursor-pointer">
+                      <ShoppingBag className="w-4 h-4" />
+                      My Purchases
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleSignOut} className="flex items-center gap-2 cursor-pointer text-red-400">
+                    <LogOut className="w-4 h-4" />
+                    Sign Out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button asChild variant="outline" size="sm">
+                <Link to="/auth">
+                  <User className="w-4 h-4 mr-2" />
+                  Sign In
+                </Link>
+              </Button>
+            )}
             <Button asChild variant="hero" size="sm">
               <Link to="/store">Open Store</Link>
             </Button>
@@ -95,6 +151,37 @@ const Header = () => {
               >
                 Discord
               </a>
+              {user ? (
+                <>
+                  <Link
+                    to="/purchases"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="font-display text-sm tracking-wide uppercase text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2"
+                  >
+                    <ShoppingBag className="w-4 h-4" />
+                    My Purchases
+                  </Link>
+                  <button
+                    onClick={() => {
+                      handleSignOut();
+                      setMobileMenuOpen(false);
+                    }}
+                    className="font-display text-sm tracking-wide uppercase text-red-400 hover:text-red-300 transition-colors flex items-center gap-2"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Sign Out
+                  </button>
+                </>
+              ) : (
+                <Link
+                  to="/auth"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="font-display text-sm tracking-wide uppercase text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2"
+                >
+                  <User className="w-4 h-4" />
+                  Sign In
+                </Link>
+              )}
               <Button asChild variant="hero" size="sm" className="w-fit">
                 <Link to="/store" onClick={() => setMobileMenuOpen(false)}>Open Store</Link>
               </Button>
