@@ -5,6 +5,94 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// RCON client for Minecraft server
+class RCONClient {
+  private host: string;
+  private port: number;
+  private password: string;
+  private conn: Deno.TcpConn | null = null;
+  private requestId = 0;
+
+  constructor(host: string, port: number, password: string) {
+    this.host = host;
+    this.port = port;
+    this.password = password;
+  }
+
+  private createPacket(id: number, type: number, body: string): Uint8Array {
+    const bodyBytes = new TextEncoder().encode(body + "\0\0");
+    const length = 4 + 4 + bodyBytes.length;
+    const buffer = new ArrayBuffer(4 + length);
+    const view = new DataView(buffer);
+    
+    view.setInt32(0, length, true);
+    view.setInt32(4, id, true);
+    view.setInt32(8, type, true);
+    
+    const uint8 = new Uint8Array(buffer);
+    uint8.set(bodyBytes, 12);
+    
+    return uint8;
+  }
+
+  private async readPacket(): Promise<{ id: number; type: number; body: string }> {
+    if (!this.conn) throw new Error("Not connected");
+    
+    const lengthBuf = new Uint8Array(4);
+    await this.conn.read(lengthBuf);
+    const length = new DataView(lengthBuf.buffer).getInt32(0, true);
+    
+    const dataBuf = new Uint8Array(length);
+    await this.conn.read(dataBuf);
+    
+    const view = new DataView(dataBuf.buffer);
+    const id = view.getInt32(0, true);
+    const type = view.getInt32(4, true);
+    const body = new TextDecoder().decode(dataBuf.slice(8, -2));
+    
+    return { id, type, body };
+  }
+
+  async connect(): Promise<boolean> {
+    try {
+      console.log(`Connecting to RCON at ${this.host}:${this.port}`);
+      this.conn = await Deno.connect({ hostname: this.host, port: this.port });
+      
+      // Send auth packet (type 3)
+      const authPacket = this.createPacket(++this.requestId, 3, this.password);
+      await this.conn.write(authPacket);
+      
+      const response = await this.readPacket();
+      console.log("RCON auth response:", response);
+      
+      return response.id !== -1;
+    } catch (error) {
+      console.error("RCON connection error:", error);
+      return false;
+    }
+  }
+
+  async sendCommand(command: string): Promise<string> {
+    if (!this.conn) throw new Error("Not connected");
+    
+    console.log(`Sending RCON command: ${command}`);
+    const packet = this.createPacket(++this.requestId, 2, command);
+    await this.conn.write(packet);
+    
+    const response = await this.readPacket();
+    console.log("RCON command response:", response);
+    
+    return response.body;
+  }
+
+  close() {
+    if (this.conn) {
+      this.conn.close();
+      this.conn = null;
+    }
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -29,6 +117,22 @@ serve(async (req) => {
           },
           body: JSON.stringify({ value: params.value }),
         });
+
+        // Log admin action
+        await fetch(`${supabaseUrl}/rest/v1/logs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Prefer": "return=minimal",
+          },
+          body: JSON.stringify({
+            type: "admin",
+            message: `Maintenance mode ${params.value === "true" ? "enabled" : "disabled"}`,
+            metadata: { action: "toggle_maintenance", value: params.value },
+          }),
+        });
         break;
       }
 
@@ -51,7 +155,7 @@ serve(async (req) => {
 
           if (order.product_type === "rank") {
             const rankName = order.product_name.replace(" Rank", "").toLowerCase();
-            command = `/lp user ${targetUsername} parent set ${rankName}`;
+            command = `lp user ${targetUsername} parent set ${rankName}`;
           } else if (order.product_type === "money") {
             const amountStr = order.product_name.replace(" In-Game Money", "");
             let amount = 0;
@@ -60,9 +164,33 @@ serve(async (req) => {
             } else if (amountStr.includes("M")) {
               amount = parseFloat(amountStr.replace("M", "")) * 1000000;
             }
-            command = `/economy give ${targetUsername} ${Math.floor(amount)}`;
+            command = `economy give ${targetUsername} ${Math.floor(amount)}`;
           } else if (order.product_type === "crate") {
-            command = `Crate ${order.product_name} delivered to ${targetUsername}`;
+            command = `say ${targetUsername} bought ${order.product_name}`;
+          }
+
+          // Try RCON delivery
+          const rconHost = Deno.env.get("RCON_HOST");
+          const rconPort = parseInt(Deno.env.get("RCON_PORT") || "25575");
+          const rconPassword = Deno.env.get("RCON_PASSWORD");
+
+          let rconSuccess = false;
+          let rconResult = "";
+
+          if (rconHost && rconPassword) {
+            const rcon = new RCONClient(rconHost, rconPort, rconPassword);
+            try {
+              const connected = await rcon.connect();
+              if (connected) {
+                rconResult = await rcon.sendCommand(command);
+                rconSuccess = true;
+                console.log("RCON retry result:", rconResult);
+              }
+              rcon.close();
+            } catch (err: any) {
+              console.error("RCON retry error:", err);
+              rconResult = err.message;
+            }
           }
 
           // Update order
@@ -75,9 +203,10 @@ serve(async (req) => {
               "Prefer": "return=minimal",
             },
             body: JSON.stringify({
-              payment_status: "delivered",
-              delivery_status: "delivered",
+              payment_status: rconSuccess ? "delivered" : "paid",
+              delivery_status: rconSuccess ? "delivered" : "pending",
               command_executed: command,
+              error_log: rconSuccess ? null : `Retry failed: ${rconResult}`,
             }),
           });
 
@@ -91,12 +220,18 @@ serve(async (req) => {
               "Prefer": "return=minimal",
             },
             body: JSON.stringify({
-              type: "delivery_retry",
-              message: `Retry delivery for order ${order.order_id}`,
+              type: rconSuccess ? "delivery" : "error",
+              message: rconSuccess 
+                ? `Retry delivery successful for order ${order.order_id}` 
+                : `Retry delivery failed for order ${order.order_id}`,
               order_id: order.id,
-              metadata: { command },
+              metadata: { command, rconSuccess, rconResult },
             }),
           });
+
+          if (!rconSuccess) {
+            throw new Error(`RCON delivery failed: ${rconResult}`);
+          }
         }
         break;
       }
@@ -112,6 +247,22 @@ serve(async (req) => {
           },
           body: JSON.stringify(params.coupon),
         });
+
+        // Log
+        await fetch(`${supabaseUrl}/rest/v1/logs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Prefer": "return=minimal",
+          },
+          body: JSON.stringify({
+            type: "admin",
+            message: `Coupon created: ${params.coupon.code}`,
+            metadata: params.coupon,
+          }),
+        });
         break;
       }
 
@@ -122,6 +273,125 @@ serve(async (req) => {
             "apikey": supabaseKey,
             "Authorization": `Bearer ${supabaseKey}`,
           },
+        });
+
+        // Log
+        await fetch(`${supabaseUrl}/rest/v1/logs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Prefer": "return=minimal",
+          },
+          body: JSON.stringify({
+            type: "admin",
+            message: `Coupon deleted`,
+            metadata: { couponId: params.couponId },
+          }),
+        });
+        break;
+      }
+
+      case "increment_coupon_usage": {
+        // Increment coupon uses_count
+        const couponResponse = await fetch(
+          `${supabaseUrl}/rest/v1/coupons?id=eq.${params.couponId}&select=uses_count`,
+          {
+            headers: {
+              "apikey": supabaseKey,
+              "Authorization": `Bearer ${supabaseKey}`,
+            },
+          }
+        );
+        const coupons = await couponResponse.json();
+        if (coupons && coupons.length > 0) {
+          const newCount = (coupons[0].uses_count || 0) + 1;
+          await fetch(`${supabaseUrl}/rest/v1/coupons?id=eq.${params.couponId}`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": supabaseKey,
+              "Authorization": `Bearer ${supabaseKey}`,
+              "Prefer": "return=minimal",
+            },
+            body: JSON.stringify({ uses_count: newCount }),
+          });
+        }
+        break;
+      }
+
+      case "clear_data": {
+        // Verify admin password first
+        const { data: adminUsers } = await fetch(
+          `${supabaseUrl}/rest/v1/admin_users?username=eq.${params.username}&select=password_hash`,
+          {
+            headers: {
+              "apikey": supabaseKey,
+              "Authorization": `Bearer ${supabaseKey}`,
+            },
+          }
+        ).then(r => r.json().then(data => ({ data })));
+
+        if (!adminUsers || adminUsers.length === 0) {
+          throw new Error("Invalid credentials");
+        }
+
+        // Simple password check (in production, use proper hashing comparison)
+        const encoder = new TextEncoder();
+        const data = encoder.encode(params.password);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        
+        if (hashHex !== adminUsers[0].password_hash) {
+          throw new Error("Invalid password");
+        }
+
+        // Clear orders
+        await fetch(`${supabaseUrl}/rest/v1/orders`, {
+          method: "DELETE",
+          headers: {
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Prefer": "return=minimal",
+          },
+        });
+
+        // Clear logs
+        await fetch(`${supabaseUrl}/rest/v1/logs`, {
+          method: "DELETE",
+          headers: {
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Prefer": "return=minimal",
+          },
+        });
+
+        // Clear active_ranks
+        await fetch(`${supabaseUrl}/rest/v1/active_ranks`, {
+          method: "DELETE",
+          headers: {
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Prefer": "return=minimal",
+          },
+        });
+
+        // Log the clear action (new log after clearing)
+        await fetch(`${supabaseUrl}/rest/v1/logs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Prefer": "return=minimal",
+          },
+          body: JSON.stringify({
+            type: "admin",
+            message: "All data cleared by admin",
+            metadata: { action: "clear_data", timestamp: new Date().toISOString() },
+          }),
         });
         break;
       }

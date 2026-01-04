@@ -14,6 +14,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   LayoutDashboard,
   Package,
   Settings,
@@ -38,12 +46,15 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Filter,
+  Search,
+  Trash2,
+  RotateCcw,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Helmet } from "react-helmet-async";
 import { formatPrice } from "@/lib/products";
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, CartesianGrid, BarChart, Bar, XAxis, YAxis } from "recharts";
 
 interface LogEntry {
   id: string;
@@ -69,6 +80,14 @@ const Admin = () => {
   const [settings, setSettings] = useState<any>({});
   const [loading, setLoading] = useState(false);
   const [logFilter, setLogFilter] = useState("all");
+  const [orderSearch, setOrderSearch] = useState("");
+  const [retryingOrder, setRetryingOrder] = useState<string | null>(null);
+  
+  // Clear data dialog
+  const [showClearDialog, setShowClearDialog] = useState(false);
+  const [clearPassword, setClearPassword] = useState("");
+  const [clearLoading, setClearLoading] = useState(false);
+
   const [stats, setStats] = useState({
     ordersToday: 0,
     revenueToday: 0,
@@ -106,6 +125,7 @@ const Admin = () => {
       if (error) throw error;
       if (data.success) {
         sessionStorage.setItem("admin_auth", "true");
+        sessionStorage.setItem("admin_username", username);
         setIsAuthenticated(true);
         fetchData();
         toast.success("Login successful");
@@ -120,6 +140,7 @@ const Admin = () => {
 
   const handleLogout = () => {
     sessionStorage.removeItem("admin_auth");
+    sessionStorage.removeItem("admin_username");
     setIsAuthenticated(false);
   };
 
@@ -131,7 +152,7 @@ const Admin = () => {
         .from("orders")
         .select("*")
         .order("created_at", { ascending: false })
-        .limit(100);
+        .limit(500);
       setOrders(ordersData || []);
 
       // Calculate stats
@@ -149,7 +170,7 @@ const Admin = () => {
         totalRevenue: paidOrders.reduce((acc, o) => acc + o.amount, 0),
         successful: (ordersData || []).filter((o) => o.payment_status === "delivered").length,
         failed: (ordersData || []).filter((o) => o.payment_status === "failed").length,
-        pending: (ordersData || []).filter((o) => o.delivery_status === "pending" && o.payment_status === "paid").length,
+        pending: (ordersData || []).filter((o) => o.delivery_status === "pending" && (o.payment_status === "paid" || o.payment_status === "delivered")).length,
         totalOrders: (ordersData || []).length,
       });
 
@@ -165,7 +186,7 @@ const Admin = () => {
         .from("logs")
         .select("*")
         .order("created_at", { ascending: false })
-        .limit(200);
+        .limit(500);
       setLogs(logsData || []);
 
       // Fetch settings
@@ -175,8 +196,11 @@ const Admin = () => {
         settingsObj[s.key] = s.value;
       });
       setSettings(settingsObj);
+      
+      toast.success("Data refreshed");
     } catch (err) {
       console.error("Fetch error:", err);
+      toast.error("Failed to fetch data");
     }
     setLoading(false);
   };
@@ -193,15 +217,18 @@ const Admin = () => {
   };
 
   const retryDelivery = async (orderId: string) => {
-    const { error } = await supabase.functions.invoke("admin-action", {
-      body: { action: "retry_delivery", orderId },
-    });
-    if (!error) {
-      toast.success("Delivery retry initiated");
+    setRetryingOrder(orderId);
+    try {
+      const { error } = await supabase.functions.invoke("admin-action", {
+        body: { action: "retry_delivery", orderId },
+      });
+      if (error) throw error;
+      toast.success("Delivery retry successful!");
       fetchData();
-    } else {
-      toast.error("Retry failed");
+    } catch (err: any) {
+      toast.error(err.message || "Retry failed - check RCON connection");
     }
+    setRetryingOrder(null);
   };
 
   const createCoupon = async () => {
@@ -237,6 +264,38 @@ const Admin = () => {
       toast.success("Coupon deleted");
       fetchData();
     }
+  };
+
+  const handleClearData = async () => {
+    if (!clearPassword) {
+      toast.error("Please enter your password");
+      return;
+    }
+    
+    if (settings.maintenance_mode !== "true") {
+      toast.error("Maintenance mode must be enabled first");
+      return;
+    }
+
+    setClearLoading(true);
+    try {
+      const adminUsername = sessionStorage.getItem("admin_username") || "admin";
+      const { error } = await supabase.functions.invoke("admin-action", {
+        body: { 
+          action: "clear_data", 
+          username: adminUsername,
+          password: clearPassword 
+        },
+      });
+      if (error) throw error;
+      toast.success("All data cleared successfully");
+      setShowClearDialog(false);
+      setClearPassword("");
+      fetchData();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to clear data - check password");
+    }
+    setClearLoading(false);
   };
 
   const getStatusBadge = (status: string) => {
@@ -346,6 +405,15 @@ const Admin = () => {
 
   const uniqueLogTypes = [...new Set(logs.map(log => log.type))];
 
+  // Filter orders by search
+  const filteredOrders = orderSearch.trim()
+    ? orders.filter(order => 
+        order.order_id.toLowerCase().includes(orderSearch.toLowerCase()) ||
+        order.minecraft_username.toLowerCase().includes(orderSearch.toLowerCase()) ||
+        order.discord_username.toLowerCase().includes(orderSearch.toLowerCase())
+      )
+    : orders;
+
   if (!isAuthenticated) {
     return (
       <>
@@ -402,6 +470,58 @@ const Admin = () => {
       <Helmet>
         <title>Admin Panel - Axis Economy Store</title>
       </Helmet>
+      
+      {/* Clear Data Dialog */}
+      <Dialog open={showClearDialog} onOpenChange={setShowClearDialog}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-destructive flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5" />
+              Clear All Data
+            </DialogTitle>
+            <DialogDescription>
+              This will permanently delete all orders, logs, and active ranks. This action cannot be undone.
+              Maintenance mode must be enabled.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="flex items-center gap-2 p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+              <AlertTriangle className="w-5 h-5 text-yellow-400" />
+              <span className="text-sm">
+                Maintenance mode: {settings.maintenance_mode === "true" ? (
+                  <span className="text-emerald-400 font-medium">Enabled</span>
+                ) : (
+                  <span className="text-red-400 font-medium">Disabled - Enable first!</span>
+                )}
+              </span>
+            </div>
+            <div className="space-y-2">
+              <Label>Enter your admin password to confirm</Label>
+              <Input
+                type="password"
+                value={clearPassword}
+                onChange={(e) => setClearPassword(e.target.value)}
+                placeholder="Admin password"
+                className="bg-background/50"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowClearDialog(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleClearData}
+              disabled={clearLoading || settings.maintenance_mode !== "true"}
+            >
+              {clearLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
+              Clear All Data
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="min-h-screen bg-background flex">
         {/* Sidebar */}
         <div className="w-72 bg-card/50 backdrop-blur-xl border-r border-border/50 p-6 flex flex-col">
@@ -539,7 +659,7 @@ const Admin = () => {
                     <CardContent className="pt-6">
                       <div className="flex items-start justify-between">
                         <div>
-                          <p className="text-sm text-muted-foreground mb-1">Pending</p>
+                          <p className="text-sm text-muted-foreground mb-1">Pending Delivery</p>
                           <div className="text-3xl font-bold text-yellow-400">{stats.pending}</div>
                         </div>
                         <div className="w-12 h-12 rounded-xl bg-yellow-500/20 flex items-center justify-center">
@@ -677,44 +797,88 @@ const Admin = () => {
 
             {/* Orders */}
             {activeTab === "orders" && (
-              <Card className="bg-card/50 backdrop-blur">
-                <CardContent className="pt-6">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="border-border/50">
-                        <TableHead className="text-muted-foreground">Order ID</TableHead>
-                        <TableHead className="text-muted-foreground">Minecraft</TableHead>
-                        <TableHead className="text-muted-foreground">Discord</TableHead>
-                        <TableHead className="text-muted-foreground">Product</TableHead>
-                        <TableHead className="text-muted-foreground">Amount</TableHead>
-                        <TableHead className="text-muted-foreground">Payment</TableHead>
-                        <TableHead className="text-muted-foreground">Delivery</TableHead>
-                        <TableHead className="text-muted-foreground">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {orders.map((order) => (
-                        <TableRow key={order.id} className="border-border/30 hover:bg-muted/30">
-                          <TableCell className="font-mono text-xs text-muted-foreground">{order.order_id}</TableCell>
-                          <TableCell className="font-medium">{order.minecraft_username}</TableCell>
-                          <TableCell className="text-muted-foreground">{order.discord_username}</TableCell>
-                          <TableCell>{order.product_name}</TableCell>
-                          <TableCell className="font-semibold text-primary">{formatPrice(order.amount)}</TableCell>
-                          <TableCell>{getStatusBadge(order.payment_status)}</TableCell>
-                          <TableCell>{getStatusBadge(order.delivery_status)}</TableCell>
-                          <TableCell>
-                            {order.payment_status === "paid" && order.delivery_status === "pending" && (
-                              <Button size="sm" variant="outline" onClick={() => retryDelivery(order.id)} className="gap-1">
-                                <RefreshCw className="w-3 h-3" /> Retry
-                              </Button>
-                            )}
-                          </TableCell>
+              <div className="space-y-6">
+                {/* Search Bar */}
+                <Card className="bg-card/50 backdrop-blur">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search by Order ID, Minecraft username, or Discord..."
+                          value={orderSearch}
+                          onChange={(e) => setOrderSearch(e.target.value)}
+                          className="pl-10 bg-background/50"
+                        />
+                      </div>
+                      <Button variant="outline" onClick={() => setOrderSearch("")}>
+                        Clear
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-card/50 backdrop-blur">
+                  <CardContent className="pt-6">
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-border/50">
+                          <TableHead className="text-muted-foreground">Order ID</TableHead>
+                          <TableHead className="text-muted-foreground">Minecraft</TableHead>
+                          <TableHead className="text-muted-foreground">Discord</TableHead>
+                          <TableHead className="text-muted-foreground">Product</TableHead>
+                          <TableHead className="text-muted-foreground">Amount</TableHead>
+                          <TableHead className="text-muted-foreground">Payment</TableHead>
+                          <TableHead className="text-muted-foreground">Delivery</TableHead>
+                          <TableHead className="text-muted-foreground">Actions</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredOrders.map((order) => (
+                          <TableRow key={order.id} className="border-border/30 hover:bg-muted/30">
+                            <TableCell className="font-mono text-xs text-muted-foreground">{order.order_id}</TableCell>
+                            <TableCell className="font-medium">{order.minecraft_username}</TableCell>
+                            <TableCell className="text-muted-foreground">{order.discord_username}</TableCell>
+                            <TableCell>{order.product_name}</TableCell>
+                            <TableCell className="font-semibold text-primary">{formatPrice(order.amount)}</TableCell>
+                            <TableCell>{getStatusBadge(order.payment_status)}</TableCell>
+                            <TableCell>{getStatusBadge(order.delivery_status)}</TableCell>
+                            <TableCell>
+                              {(order.payment_status === "paid" && order.delivery_status === "pending") || 
+                               (order.payment_status === "delivered" && order.delivery_status === "pending") ? (
+                                <Button 
+                                  size="sm" 
+                                  variant="outline" 
+                                  onClick={() => retryDelivery(order.id)} 
+                                  disabled={retryingOrder === order.id}
+                                  className="gap-1"
+                                >
+                                  {retryingOrder === order.id ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <RotateCcw className="w-3 h-3" />
+                                  )}
+                                  Retry
+                                </Button>
+                              ) : order.command_executed ? (
+                                <span className="text-xs text-muted-foreground font-mono truncate max-w-[150px] block" title={order.command_executed}>
+                                  {order.command_executed}
+                                </span>
+                              ) : null}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    {filteredOrders.length === 0 && (
+                      <div className="text-center py-12 text-muted-foreground">
+                        <Package className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                        <p>No orders found</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             )}
 
             {/* Logs */}
@@ -941,7 +1105,7 @@ const Admin = () => {
                               {coupon.type === "flat" ? formatPrice(coupon.value) : `${coupon.value}%`}
                             </TableCell>
                             <TableCell>
-                              <span className="font-mono">{coupon.uses_count}</span>
+                              <span className="font-mono">{coupon.uses_count || 0}</span>
                               <span className="text-muted-foreground"> / {coupon.max_uses}</span>
                             </TableCell>
                             <TableCell>
@@ -1019,6 +1183,36 @@ const Admin = () => {
                           Razorpay Active
                         </span>
                       </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-card/50 backdrop-blur border-red-500/20">
+                  <CardHeader>
+                    <CardTitle className="text-lg font-display flex items-center gap-2 text-red-400">
+                      <Trash2 className="w-5 h-5" />
+                      Danger Zone
+                    </CardTitle>
+                    <CardDescription>
+                      Irreversible actions that affect all data
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-between p-4 bg-red-500/10 rounded-lg border border-red-500/20">
+                      <div>
+                        <p className="font-medium">Clear All Data</p>
+                        <p className="text-sm text-muted-foreground">
+                          Delete all orders, logs, and active ranks. Requires maintenance mode.
+                        </p>
+                      </div>
+                      <Button 
+                        variant="destructive" 
+                        onClick={() => setShowClearDialog(true)}
+                        className="gap-2"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Clear Data
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>

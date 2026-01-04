@@ -13,7 +13,7 @@ serve(async (req) => {
   try {
     const { productType, productId, productName, amount, minecraftUsername, discordUsername, giftTo, couponId } = await req.json();
 
-    console.log("Creating order:", { productType, productId, productName, amount, minecraftUsername });
+    console.log("Creating order:", { productType, productId, productName, amount, minecraftUsername, couponId });
 
     const orderId = `AXS${Date.now()}${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
@@ -71,6 +71,50 @@ serve(async (req) => {
         gift_to: giftTo,
         payment_status: "pending",
         delivery_status: "pending",
+      }),
+    });
+
+    // If coupon was used, increment its usage count
+    if (couponId) {
+      const couponResponse = await fetch(
+        `${supabaseUrl}/rest/v1/coupons?id=eq.${couponId}&select=uses_count`,
+        {
+          headers: {
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+          },
+        }
+      );
+      const coupons = await couponResponse.json();
+      if (coupons && coupons.length > 0) {
+        const newCount = (coupons[0].uses_count || 0) + 1;
+        await fetch(`${supabaseUrl}/rest/v1/coupons?id=eq.${couponId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Prefer": "return=minimal",
+          },
+          body: JSON.stringify({ uses_count: newCount }),
+        });
+        console.log(`Coupon ${couponId} usage incremented to ${newCount}`);
+      }
+    }
+
+    // Log order creation
+    await fetch(`${supabaseUrl}/rest/v1/logs`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": supabaseKey,
+        "Authorization": `Bearer ${supabaseKey}`,
+        "Prefer": "return=minimal",
+      },
+      body: JSON.stringify({
+        type: "info",
+        message: `Order created: ${orderId} for ${productName}`,
+        metadata: { orderId, productName, amount, minecraftUsername, couponId },
       }),
     });
 
