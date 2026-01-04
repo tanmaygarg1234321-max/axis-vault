@@ -11,6 +11,8 @@ import PaymentStatus from "./pages/PaymentStatus";
 import Terms from "./pages/Terms";
 import Maintenance from "./pages/Maintenance";
 import Admin from "./pages/Admin";
+import Auth from "./pages/Auth";
+import PurchaseHistory from "./pages/PurchaseHistory";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +32,8 @@ const App = () => (
             <Route path="/terms" element={<Terms />} />
             <Route path="/maintenance" element={<Maintenance />} />
             <Route path="/admin" element={<Admin />} />
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/purchases" element={<PurchaseHistory />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

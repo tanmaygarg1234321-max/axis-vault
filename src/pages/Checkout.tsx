@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ranks, crates, moneyPackages, formatPrice } from "@/lib/products";
-import { Shield, Package, Clock, CreditCard, User, MessageCircle, Gift, ArrowLeft, Loader2 } from "lucide-react";
+import { Shield, Package, Clock, CreditCard, User, MessageCircle, Gift, ArrowLeft, Loader2, LogIn } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Helmet } from "react-helmet-async";
@@ -24,6 +24,8 @@ const Checkout = () => {
   const type = searchParams.get("type");
   const id = searchParams.get("id");
 
+  const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [minecraftUsername, setMinecraftUsername] = useState("");
   const [discordUsername, setDiscordUsername] = useState("");
   const [isGift, setIsGift] = useState(false);
@@ -31,6 +33,21 @@ const Checkout = () => {
   const [loading, setLoading] = useState(false);
   const [couponCode, setCouponCode] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
+
+  // Check auth
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setAuthLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   // Get product info
   let product: any = null;
@@ -118,14 +135,6 @@ const Checkout = () => {
       toast.error("Please enter your Minecraft username");
       return;
     }
-    if (!discordUsername.trim()) {
-      toast.error("Please enter your Discord username");
-      return;
-    }
-    if (isGift && !giftTo.trim()) {
-      toast.error("Please enter the gift recipient's Minecraft username");
-      return;
-    }
 
     setLoading(true);
 
@@ -138,9 +147,11 @@ const Checkout = () => {
           productName,
           amount: finalPrice,
           minecraftUsername: minecraftUsername.trim(),
-          discordUsername: discordUsername.trim(),
+          discordUsername: discordUsername.trim() || "Not provided",
           giftTo: isGift ? giftTo.trim() : null,
           couponId: appliedCoupon?.id || null,
+          userId: user?.id || null,
+          userEmail: user?.email || null,
         },
       });
 
@@ -156,6 +167,10 @@ const Checkout = () => {
         name: "Axis Economy Store",
         description: productName,
         order_id: razorpayOrderId,
+        prefill: {
+          name: minecraftUsername,
+          email: user?.email || "",
+        },
         handler: async function (response: any) {
           // Verify payment
           const { error: verifyError } = await supabase.functions.invoke("verify-payment", {
@@ -172,9 +187,6 @@ const Checkout = () => {
           } else {
             navigate(`/payment-status?status=success&order=${orderId}`);
           }
-        },
-        prefill: {
-          name: minecraftUsername,
         },
         theme: {
           color: "#10b981",
@@ -195,6 +207,14 @@ const Checkout = () => {
     }
   };
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   if (!product) {
     return (
       <div className="min-h-screen bg-background">
@@ -209,6 +229,49 @@ const Checkout = () => {
         </main>
         <Footer />
       </div>
+    );
+  }
+
+  // Require login for checkout
+  if (!user) {
+    return (
+      <>
+        <Helmet>
+          <title>Checkout - Axis Economy Store</title>
+        </Helmet>
+        <div className="min-h-screen bg-background">
+          <Header />
+          <main className="pt-24 pb-20">
+            <div className="container mx-auto px-4 max-w-lg text-center">
+              <div className="glass-card p-8">
+                <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center mx-auto mb-6">
+                  <LogIn className="w-10 h-10 text-primary" />
+                </div>
+                <h1 className="font-display text-2xl font-bold mb-4">Sign In to Continue</h1>
+                <p className="text-muted-foreground mb-6">
+                  Please sign in or create an account to complete your purchase.
+                  This helps us track your orders and send you updates.
+                </p>
+                <div className="space-y-3">
+                  <Button asChild variant="hero" className="w-full">
+                    <Link to={`/auth?redirect=/checkout?type=${type}&id=${id}`}>
+                      <User className="w-4 h-4" />
+                      Sign In / Create Account
+                    </Link>
+                  </Button>
+                  <Button asChild variant="outline" className="w-full">
+                    <Link to="/store">
+                      <ArrowLeft className="w-4 h-4" />
+                      Back to Store
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </main>
+          <Footer />
+        </div>
+      </>
     );
   }
 
@@ -315,6 +378,12 @@ const Checkout = () => {
                 </h2>
 
                 <div className="space-y-5">
+                  {/* Logged in as */}
+                  <div className="p-3 bg-primary/10 rounded-lg border border-primary/20">
+                    <p className="text-sm text-muted-foreground">Logged in as</p>
+                    <p className="font-medium text-primary">{user.email}</p>
+                  </div>
+
                   {/* Minecraft Username */}
                   <div className="space-y-2">
                     <Label htmlFor="minecraft" className="flex items-center gap-2">
@@ -333,11 +402,11 @@ const Checkout = () => {
                     </p>
                   </div>
 
-                  {/* Discord Username */}
+                  {/* Discord Username (Optional) */}
                   <div className="space-y-2">
                     <Label htmlFor="discord" className="flex items-center gap-2">
                       <MessageCircle className="w-4 h-4" />
-                      Discord Username <span className="text-destructive">*</span>
+                      Discord Username <span className="text-muted-foreground text-xs">(optional)</span>
                     </Label>
                     <Input
                       id="discord"

@@ -55,6 +55,7 @@ import { toast } from "sonner";
 import { Helmet } from "react-helmet-async";
 import { formatPrice } from "@/lib/products";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, CartesianGrid, BarChart, Bar, XAxis, YAxis } from "recharts";
+import AdminUsersSection from "@/components/AdminUsersSection";
 
 interface LogEntry {
   id: string;
@@ -539,6 +540,7 @@ const Admin = () => {
             {[
               { id: "dashboard", icon: LayoutDashboard, label: "Dashboard", description: "Overview & stats" },
               { id: "orders", icon: Package, label: "Orders", description: "Manage orders" },
+              { id: "users", icon: Users, label: "Users", description: "Customer info" },
               { id: "logs", icon: FileText, label: "Logs", description: "System logs" },
               { id: "coupons", icon: Ticket, label: "Coupons", description: "Discount codes" },
               { id: "settings", icon: Settings, label: "Settings", description: "Configuration" },
@@ -584,6 +586,7 @@ const Admin = () => {
                 <p className="text-muted-foreground text-sm mt-1">
                   {activeTab === "dashboard" && "Overview of your store performance"}
                   {activeTab === "orders" && "View and manage all customer orders"}
+                  {activeTab === "users" && "View customer information and purchase history"}
                   {activeTab === "logs" && "System activity and event logs"}
                   {activeTab === "coupons" && "Create and manage discount codes"}
                   {activeTab === "settings" && "Configure store settings"}
@@ -879,6 +882,11 @@ const Admin = () => {
                   </CardContent>
                 </Card>
               </div>
+            )}
+
+            {/* Users */}
+            {activeTab === "users" && (
+              <AdminUsersSection orders={orders} />
             )}
 
             {/* Logs */}

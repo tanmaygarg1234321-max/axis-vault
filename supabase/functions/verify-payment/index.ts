@@ -93,6 +93,28 @@ class RCONClient {
   }
 }
 
+// Helper to send emails
+async function sendEmail(supabaseUrl: string, supabaseKey: string, emailData: any) {
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify(emailData),
+    });
+    
+    if (!response.ok) {
+      console.error("Email send failed:", await response.text());
+    } else {
+      console.log("Email sent successfully");
+    }
+  } catch (err) {
+    console.error("Email error:", err);
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -375,6 +397,22 @@ serve(async (req) => {
           metadata: { command, rconConnected },
         }),
       });
+
+      // Send success email if user has email
+      if (order.user_email) {
+        await sendEmail(supabaseUrl, supabaseKey, {
+          type: "receipt",
+          to: order.user_email,
+          orderData: {
+            orderId: order.order_id,
+            productName: order.product_name,
+            amount: order.amount,
+            minecraftUsername: order.minecraft_username,
+            giftTo: order.gift_to,
+            createdAt: order.created_at,
+          },
+        });
+      }
 
     } catch (deliveryError: any) {
       console.error("Delivery error:", deliveryError);

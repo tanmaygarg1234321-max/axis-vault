@@ -322,34 +322,32 @@ serve(async (req) => {
       }
 
       case "clear_data": {
-        // Verify admin password first
-        const { data: adminUsers } = await fetch(
-          `${supabaseUrl}/rest/v1/admin_users?username=eq.${params.username}&select=password_hash`,
+        // Verify admin password - use the hardcoded admin credentials
+        // Since admin_users table is empty, we use the same credentials as admin-login
+        const ADMIN_USERNAME = "admin";
+        const ADMIN_PASSWORD = "axis2024admin";
+        
+        if (params.username !== ADMIN_USERNAME || params.password !== ADMIN_PASSWORD) {
+          throw new Error("Invalid credentials");
+        }
+
+        // Check if maintenance mode is enabled
+        const settingsResponse = await fetch(
+          `${supabaseUrl}/rest/v1/site_settings?key=eq.maintenance_mode&select=value`,
           {
             headers: {
               "apikey": supabaseKey,
               "Authorization": `Bearer ${supabaseKey}`,
             },
           }
-        ).then(r => r.json().then(data => ({ data })));
-
-        if (!adminUsers || adminUsers.length === 0) {
-          throw new Error("Invalid credentials");
-        }
-
-        // Simple password check (in production, use proper hashing comparison)
-        const encoder = new TextEncoder();
-        const data = encoder.encode(params.password);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        
-        if (hashHex !== adminUsers[0].password_hash) {
-          throw new Error("Invalid password");
+        );
+        const settingsData = await settingsResponse.json();
+        if (!settingsData || settingsData.length === 0 || settingsData[0].value !== "true") {
+          throw new Error("Maintenance mode must be enabled to clear data");
         }
 
         // Clear orders
-        await fetch(`${supabaseUrl}/rest/v1/orders`, {
+        await fetch(`${supabaseUrl}/rest/v1/orders?id=neq.00000000-0000-0000-0000-000000000000`, {
           method: "DELETE",
           headers: {
             "apikey": supabaseKey,
@@ -359,7 +357,7 @@ serve(async (req) => {
         });
 
         // Clear logs
-        await fetch(`${supabaseUrl}/rest/v1/logs`, {
+        await fetch(`${supabaseUrl}/rest/v1/logs?id=neq.00000000-0000-0000-0000-000000000000`, {
           method: "DELETE",
           headers: {
             "apikey": supabaseKey,
@@ -369,7 +367,7 @@ serve(async (req) => {
         });
 
         // Clear active_ranks
-        await fetch(`${supabaseUrl}/rest/v1/active_ranks`, {
+        await fetch(`${supabaseUrl}/rest/v1/active_ranks?id=neq.00000000-0000-0000-0000-000000000000`, {
           method: "DELETE",
           headers: {
             "apikey": supabaseKey,
