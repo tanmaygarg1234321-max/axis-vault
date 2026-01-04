@@ -3,9 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -23,16 +22,37 @@ import {
   Shield,
   LogOut,
   RefreshCw,
-  Eye,
   Loader2,
-  Check,
   X,
+  TrendingUp,
+  DollarSign,
+  CheckCircle2,
+  XCircle,
   Clock,
+  AlertTriangle,
+  Activity,
+  Server,
+  CreditCard,
+  Terminal,
+  Users,
+  ArrowUpRight,
+  ArrowDownRight,
+  Filter,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Helmet } from "react-helmet-async";
 import { formatPrice } from "@/lib/products";
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid, BarChart, Bar } from "recharts";
+
+interface LogEntry {
+  id: string;
+  type: string;
+  message: string;
+  order_id: string | null;
+  metadata: any;
+  created_at: string;
+}
 
 const Admin = () => {
   const navigate = useNavigate();
@@ -45,15 +65,18 @@ const Admin = () => {
   // Data states
   const [orders, setOrders] = useState<any[]>([]);
   const [coupons, setCoupons] = useState<any[]>([]);
-  const [logs, setLogs] = useState<any[]>([]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const [settings, setSettings] = useState<any>({});
   const [loading, setLoading] = useState(false);
+  const [logFilter, setLogFilter] = useState("all");
   const [stats, setStats] = useState({
     ordersToday: 0,
     revenueToday: 0,
+    totalRevenue: 0,
     successful: 0,
     failed: 0,
     pending: 0,
+    totalOrders: 0,
   });
 
   // Coupon form
@@ -116,14 +139,18 @@ const Admin = () => {
       const todayOrders = (ordersData || []).filter(
         (o) => o.created_at.startsWith(today)
       );
+      const paidOrders = (ordersData || []).filter((o) => o.payment_status === "paid" || o.payment_status === "delivered");
+      
       setStats({
         ordersToday: todayOrders.length,
         revenueToday: todayOrders
           .filter((o) => o.payment_status === "paid" || o.payment_status === "delivered")
           .reduce((acc, o) => acc + o.amount, 0),
+        totalRevenue: paidOrders.reduce((acc, o) => acc + o.amount, 0),
         successful: (ordersData || []).filter((o) => o.payment_status === "delivered").length,
         failed: (ordersData || []).filter((o) => o.payment_status === "failed").length,
         pending: (ordersData || []).filter((o) => o.delivery_status === "pending" && o.payment_status === "paid").length,
+        totalOrders: (ordersData || []).length,
       });
 
       // Fetch coupons
@@ -132,6 +159,14 @@ const Admin = () => {
         .select("*")
         .order("created_at", { ascending: false });
       setCoupons(couponsData || []);
+
+      // Fetch logs
+      const { data: logsData } = await supabase
+        .from("logs")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(200);
+      setLogs(logsData || []);
 
       // Fetch settings
       const { data: settingsData } = await supabase.from("site_settings").select("*");
@@ -206,14 +241,110 @@ const Admin = () => {
 
   const getStatusBadge = (status: string) => {
     const badges: any = {
-      pending: <span className="bg-yellow-500/20 text-yellow-500 px-2 py-1 rounded text-xs">Pending</span>,
-      paid: <span className="bg-blue-500/20 text-blue-500 px-2 py-1 rounded text-xs">Paid</span>,
-      delivered: <span className="bg-green-500/20 text-green-500 px-2 py-1 rounded text-xs">Delivered</span>,
-      failed: <span className="bg-red-500/20 text-red-500 px-2 py-1 rounded text-xs">Failed</span>,
-      refunded: <span className="bg-gray-500/20 text-gray-500 px-2 py-1 rounded text-xs">Refunded</span>,
+      pending: (
+        <span className="inline-flex items-center gap-1 bg-yellow-500/20 text-yellow-400 px-2.5 py-1 rounded-full text-xs font-medium">
+          <Clock className="w-3 h-3" /> Pending
+        </span>
+      ),
+      paid: (
+        <span className="inline-flex items-center gap-1 bg-blue-500/20 text-blue-400 px-2.5 py-1 rounded-full text-xs font-medium">
+          <CreditCard className="w-3 h-3" /> Paid
+        </span>
+      ),
+      delivered: (
+        <span className="inline-flex items-center gap-1 bg-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-full text-xs font-medium">
+          <CheckCircle2 className="w-3 h-3" /> Delivered
+        </span>
+      ),
+      failed: (
+        <span className="inline-flex items-center gap-1 bg-red-500/20 text-red-400 px-2.5 py-1 rounded-full text-xs font-medium">
+          <XCircle className="w-3 h-3" /> Failed
+        </span>
+      ),
+      refunded: (
+        <span className="inline-flex items-center gap-1 bg-gray-500/20 text-gray-400 px-2.5 py-1 rounded-full text-xs font-medium">
+          <ArrowDownRight className="w-3 h-3" /> Refunded
+        </span>
+      ),
     };
-    return badges[status] || status;
+    return badges[status] || <span className="text-xs text-muted-foreground">{status}</span>;
   };
+
+  const getLogIcon = (type: string) => {
+    const icons: any = {
+      payment: <CreditCard className="w-4 h-4 text-blue-400" />,
+      webhook: <Server className="w-4 h-4 text-purple-400" />,
+      rcon: <Terminal className="w-4 h-4 text-emerald-400" />,
+      delivery: <Package className="w-4 h-4 text-green-400" />,
+      error: <AlertTriangle className="w-4 h-4 text-red-400" />,
+      admin: <Shield className="w-4 h-4 text-yellow-400" />,
+      info: <Activity className="w-4 h-4 text-cyan-400" />,
+    };
+    return icons[type] || <Activity className="w-4 h-4 text-muted-foreground" />;
+  };
+
+  const getLogBgColor = (type: string) => {
+    const colors: any = {
+      payment: "bg-blue-500/10 border-blue-500/20",
+      webhook: "bg-purple-500/10 border-purple-500/20",
+      rcon: "bg-emerald-500/10 border-emerald-500/20",
+      delivery: "bg-green-500/10 border-green-500/20",
+      error: "bg-red-500/10 border-red-500/20",
+      admin: "bg-yellow-500/10 border-yellow-500/20",
+      info: "bg-cyan-500/10 border-cyan-500/20",
+    };
+    return colors[type] || "bg-muted/50 border-border";
+  };
+
+  // Chart data
+  const orderStatusData = [
+    { name: "Delivered", value: stats.successful, color: "#10b981" },
+    { name: "Pending", value: stats.pending, color: "#f59e0b" },
+    { name: "Failed", value: stats.failed, color: "#ef4444" },
+  ].filter(d => d.value > 0);
+
+  const productTypeData = orders.reduce((acc: any[], order) => {
+    const existing = acc.find(item => item.name === order.product_type);
+    if (existing) {
+      existing.value += 1;
+    } else {
+      acc.push({ name: order.product_type, value: 1 });
+    }
+    return acc;
+  }, []);
+
+  const productColors: any = {
+    rank: "#10b981",
+    crate: "#8b5cf6",
+    money: "#f59e0b",
+  };
+
+  const logTypeData = logs.reduce((acc: any[], log) => {
+    const existing = acc.find(item => item.name === log.type);
+    if (existing) {
+      existing.value += 1;
+    } else {
+      acc.push({ name: log.type, value: 1 });
+    }
+    return acc;
+  }, []);
+
+  const logColors: any = {
+    payment: "#3b82f6",
+    webhook: "#8b5cf6",
+    rcon: "#10b981",
+    delivery: "#22c55e",
+    error: "#ef4444",
+    admin: "#f59e0b",
+    info: "#06b6d4",
+  };
+
+  // Filter logs
+  const filteredLogs = logFilter === "all" 
+    ? logs 
+    : logs.filter(log => log.type === logFilter);
+
+  const uniqueLogTypes = [...new Set(logs.map(log => log.type))];
 
   if (!isAuthenticated) {
     return (
@@ -222,32 +353,42 @@ const Admin = () => {
           <title>Admin Login - Axis Economy Store</title>
         </Helmet>
         <div className="min-h-screen bg-background flex items-center justify-center p-4">
-          <Card className="w-full max-w-md">
-            <CardHeader className="text-center">
-              <Shield className="w-12 h-12 text-primary mx-auto mb-4" />
-              <CardTitle className="font-display">Admin Panel</CardTitle>
+          <div className="absolute inset-0 bg-grid-pattern opacity-20" />
+          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
+          <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-accent/5 rounded-full blur-3xl" />
+          
+          <Card className="w-full max-w-md relative z-10 bg-card/90 backdrop-blur-xl border-border/50">
+            <CardHeader className="text-center pb-2">
+              <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                <Shield className="w-8 h-8 text-primary" />
+              </div>
+              <CardTitle className="font-display text-2xl">Admin Panel</CardTitle>
+              <CardDescription>Enter your credentials to continue</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 pt-4">
               <div className="space-y-2">
-                <Label>Username</Label>
+                <Label className="text-sm text-muted-foreground">Username</Label>
                 <Input
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="Enter username"
+                  className="bg-background/50"
                 />
               </div>
               <div className="space-y-2">
-                <Label>Password</Label>
+                <Label className="text-sm text-muted-foreground">Password</Label>
                 <Input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter password"
+                  className="bg-background/50"
                   onKeyDown={(e) => e.key === "Enter" && handleLogin()}
                 />
               </div>
-              <Button className="w-full" onClick={handleLogin} disabled={loginLoading}>
-                {loginLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Login"}
+              <Button className="w-full mt-2" onClick={handleLogin} disabled={loginLoading}>
+                {loginLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                {loginLoading ? "Signing in..." : "Sign In"}
               </Button>
             </CardContent>
           </Card>
@@ -263,302 +404,646 @@ const Admin = () => {
       </Helmet>
       <div className="min-h-screen bg-background flex">
         {/* Sidebar */}
-        <div className="w-64 bg-card border-r border-border p-4 flex flex-col">
-          <div className="flex items-center gap-2 mb-8">
-            <Shield className="w-8 h-8 text-primary" />
-            <span className="font-display font-bold">Admin Panel</span>
+        <div className="w-72 bg-card/50 backdrop-blur-xl border-r border-border/50 p-6 flex flex-col">
+          <div className="flex items-center gap-3 mb-10">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+              <Shield className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <span className="font-display font-bold text-lg">Axis Admin</span>
+              <p className="text-xs text-muted-foreground">Management Console</p>
+            </div>
           </div>
 
-          <nav className="space-y-2 flex-1">
+          <nav className="space-y-1 flex-1">
             {[
-              { id: "dashboard", icon: LayoutDashboard, label: "Dashboard" },
-              { id: "orders", icon: Package, label: "Orders" },
-              { id: "coupons", icon: Ticket, label: "Coupons" },
-              { id: "settings", icon: Settings, label: "Settings" },
+              { id: "dashboard", icon: LayoutDashboard, label: "Dashboard", description: "Overview & stats" },
+              { id: "orders", icon: Package, label: "Orders", description: "Manage orders" },
+              { id: "logs", icon: FileText, label: "Logs", description: "System logs" },
+              { id: "coupons", icon: Ticket, label: "Coupons", description: "Discount codes" },
+              { id: "settings", icon: Settings, label: "Settings", description: "Configuration" },
             ].map((item) => (
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
                   activeTab === item.id
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted"
+                    ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20"
+                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                 }`}
               >
                 <item.icon className="w-5 h-5" />
-                {item.label}
+                <div className="text-left">
+                  <div className="font-medium text-sm">{item.label}</div>
+                  <div className={`text-xs ${activeTab === item.id ? "text-primary-foreground/70" : "text-muted-foreground"}`}>
+                    {item.description}
+                  </div>
+                </div>
               </button>
             ))}
           </nav>
 
-          <Button variant="ghost" onClick={handleLogout} className="mt-auto">
-            <LogOut className="w-4 h-4" />
-            Logout
-          </Button>
+          <div className="pt-4 border-t border-border/50">
+            <Button 
+              variant="ghost" 
+              onClick={handleLogout} 
+              className="w-full justify-start text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              Sign Out
+            </Button>
+          </div>
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 p-8 overflow-auto">
-          <div className="flex justify-between items-center mb-8">
-            <h1 className="font-display text-2xl font-bold capitalize">{activeTab}</h1>
-            <Button variant="outline" size="sm" onClick={fetchData} disabled={loading}>
-              <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-              Refresh
-            </Button>
-          </div>
+        <div className="flex-1 p-8 overflow-auto bg-background">
+          <div className="max-w-7xl mx-auto">
+            <div className="flex justify-between items-center mb-8">
+              <div>
+                <h1 className="font-display text-3xl font-bold capitalize">{activeTab}</h1>
+                <p className="text-muted-foreground text-sm mt-1">
+                  {activeTab === "dashboard" && "Overview of your store performance"}
+                  {activeTab === "orders" && "View and manage all customer orders"}
+                  {activeTab === "logs" && "System activity and event logs"}
+                  {activeTab === "coupons" && "Create and manage discount codes"}
+                  {activeTab === "settings" && "Configure store settings"}
+                </p>
+              </div>
+              <Button variant="outline" size="sm" onClick={fetchData} disabled={loading} className="gap-2">
+                <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            </div>
 
-          {/* Dashboard */}
-          {activeTab === "dashboard" && (
-            <div className="space-y-6">
-              <div className="grid md:grid-cols-5 gap-4">
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-2xl font-bold">{stats.ordersToday}</div>
-                    <p className="text-sm text-muted-foreground">Orders Today</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-2xl font-bold text-primary">
-                      {formatPrice(stats.revenueToday)}
-                    </div>
-                    <p className="text-sm text-muted-foreground">Revenue Today</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-2xl font-bold text-green-500">{stats.successful}</div>
-                    <p className="text-sm text-muted-foreground">Successful</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-2xl font-bold text-red-500">{stats.failed}</div>
-                    <p className="text-sm text-muted-foreground">Failed</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="text-2xl font-bold text-yellow-500">{stats.pending}</div>
-                    <p className="text-sm text-muted-foreground">Pending Delivery</p>
+            {/* Dashboard */}
+            {activeTab === "dashboard" && (
+              <div className="space-y-8">
+                {/* Stats Grid */}
+                <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Card className="bg-gradient-to-br from-emerald-500/10 to-emerald-500/5 border-emerald-500/20">
+                    <CardContent className="pt-6">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground mb-1">Total Revenue</p>
+                          <div className="text-3xl font-bold text-emerald-400">
+                            {formatPrice(stats.totalRevenue)}
+                          </div>
+                        </div>
+                        <div className="w-12 h-12 rounded-xl bg-emerald-500/20 flex items-center justify-center">
+                          <DollarSign className="w-6 h-6 text-emerald-400" />
+                        </div>
+                      </div>
+                      <div className="mt-4 flex items-center gap-1 text-xs text-emerald-400">
+                        <ArrowUpRight className="w-3 h-3" />
+                        <span>{formatPrice(stats.revenueToday)} today</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-blue-500/10 to-blue-500/5 border-blue-500/20">
+                    <CardContent className="pt-6">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground mb-1">Total Orders</p>
+                          <div className="text-3xl font-bold text-blue-400">{stats.totalOrders}</div>
+                        </div>
+                        <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center">
+                          <Package className="w-6 h-6 text-blue-400" />
+                        </div>
+                      </div>
+                      <div className="mt-4 flex items-center gap-1 text-xs text-blue-400">
+                        <TrendingUp className="w-3 h-3" />
+                        <span>{stats.ordersToday} orders today</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-green-500/10 to-green-500/5 border-green-500/20">
+                    <CardContent className="pt-6">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground mb-1">Successful</p>
+                          <div className="text-3xl font-bold text-green-400">{stats.successful}</div>
+                        </div>
+                        <div className="w-12 h-12 rounded-xl bg-green-500/20 flex items-center justify-center">
+                          <CheckCircle2 className="w-6 h-6 text-green-400" />
+                        </div>
+                      </div>
+                      <div className="mt-4 flex items-center gap-1 text-xs text-green-400">
+                        <span>{stats.totalOrders > 0 ? Math.round((stats.successful / stats.totalOrders) * 100) : 0}% success rate</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-gradient-to-br from-yellow-500/10 to-yellow-500/5 border-yellow-500/20">
+                    <CardContent className="pt-6">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground mb-1">Pending</p>
+                          <div className="text-3xl font-bold text-yellow-400">{stats.pending}</div>
+                        </div>
+                        <div className="w-12 h-12 rounded-xl bg-yellow-500/20 flex items-center justify-center">
+                          <Clock className="w-6 h-6 text-yellow-400" />
+                        </div>
+                      </div>
+                      <div className="mt-4 flex items-center gap-1 text-xs text-red-400">
+                        <XCircle className="w-3 h-3" />
+                        <span>{stats.failed} failed</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Charts Row */}
+                <div className="grid lg:grid-cols-2 gap-6">
+                  <Card className="bg-card/50 backdrop-blur">
+                    <CardHeader>
+                      <CardTitle className="text-lg font-display flex items-center gap-2">
+                        <Activity className="w-5 h-5 text-primary" />
+                        Order Status Distribution
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {orderStatusData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={250}>
+                          <PieChart>
+                            <Pie
+                              data={orderStatusData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={60}
+                              outerRadius={90}
+                              paddingAngle={5}
+                              dataKey="value"
+                            >
+                              {orderStatusData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} />
+                              ))}
+                            </Pie>
+                            <Tooltip 
+                              contentStyle={{ 
+                                backgroundColor: 'hsl(220 18% 8%)', 
+                                border: '1px solid hsl(220 16% 16%)',
+                                borderRadius: '8px'
+                              }}
+                            />
+                            <Legend />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                          No order data available
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-card/50 backdrop-blur">
+                    <CardHeader>
+                      <CardTitle className="text-lg font-display flex items-center gap-2">
+                        <Package className="w-5 h-5 text-primary" />
+                        Products Sold by Type
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {productTypeData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={250}>
+                          <BarChart data={productTypeData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="hsl(220 16% 20%)" />
+                            <XAxis dataKey="name" stroke="hsl(220 10% 60%)" fontSize={12} />
+                            <YAxis stroke="hsl(220 10% 60%)" fontSize={12} />
+                            <Tooltip 
+                              contentStyle={{ 
+                                backgroundColor: 'hsl(220 18% 8%)', 
+                                border: '1px solid hsl(220 16% 16%)',
+                                borderRadius: '8px'
+                              }}
+                            />
+                            <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+                              {productTypeData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={productColors[entry.name] || "#8884d8"} />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-[250px] flex items-center justify-center text-muted-foreground">
+                          No product data available
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Recent orders */}
+                <Card className="bg-card/50 backdrop-blur">
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <CardTitle className="text-lg font-display">Recent Orders</CardTitle>
+                    <Button variant="ghost" size="sm" onClick={() => setActiveTab("orders")}>
+                      View All <ArrowUpRight className="w-4 h-4 ml-1" />
+                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-border/50">
+                          <TableHead className="text-muted-foreground">Order ID</TableHead>
+                          <TableHead className="text-muted-foreground">User</TableHead>
+                          <TableHead className="text-muted-foreground">Product</TableHead>
+                          <TableHead className="text-muted-foreground">Amount</TableHead>
+                          <TableHead className="text-muted-foreground">Status</TableHead>
+                          <TableHead className="text-muted-foreground">Time</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {orders.slice(0, 8).map((order) => (
+                          <TableRow key={order.id} className="border-border/30 hover:bg-muted/30">
+                            <TableCell className="font-mono text-xs text-muted-foreground">{order.order_id}</TableCell>
+                            <TableCell className="font-medium">{order.minecraft_username}</TableCell>
+                            <TableCell>{order.product_name}</TableCell>
+                            <TableCell className="font-semibold text-primary">{formatPrice(order.amount)}</TableCell>
+                            <TableCell>{getStatusBadge(order.payment_status)}</TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {new Date(order.created_at).toLocaleString()}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
                   </CardContent>
                 </Card>
               </div>
+            )}
 
-              {/* Recent orders */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Recent Orders</CardTitle>
-                </CardHeader>
-                <CardContent>
+            {/* Orders */}
+            {activeTab === "orders" && (
+              <Card className="bg-card/50 backdrop-blur">
+                <CardContent className="pt-6">
                   <Table>
                     <TableHeader>
-                      <TableRow>
-                        <TableHead>Order ID</TableHead>
-                        <TableHead>User</TableHead>
-                        <TableHead>Product</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Time</TableHead>
+                      <TableRow className="border-border/50">
+                        <TableHead className="text-muted-foreground">Order ID</TableHead>
+                        <TableHead className="text-muted-foreground">Minecraft</TableHead>
+                        <TableHead className="text-muted-foreground">Discord</TableHead>
+                        <TableHead className="text-muted-foreground">Product</TableHead>
+                        <TableHead className="text-muted-foreground">Amount</TableHead>
+                        <TableHead className="text-muted-foreground">Payment</TableHead>
+                        <TableHead className="text-muted-foreground">Delivery</TableHead>
+                        <TableHead className="text-muted-foreground">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {orders.slice(0, 10).map((order) => (
-                        <TableRow key={order.id}>
-                          <TableCell className="font-mono text-xs">{order.order_id}</TableCell>
-                          <TableCell>{order.minecraft_username}</TableCell>
+                      {orders.map((order) => (
+                        <TableRow key={order.id} className="border-border/30 hover:bg-muted/30">
+                          <TableCell className="font-mono text-xs text-muted-foreground">{order.order_id}</TableCell>
+                          <TableCell className="font-medium">{order.minecraft_username}</TableCell>
+                          <TableCell className="text-muted-foreground">{order.discord_username}</TableCell>
                           <TableCell>{order.product_name}</TableCell>
-                          <TableCell>{formatPrice(order.amount)}</TableCell>
+                          <TableCell className="font-semibold text-primary">{formatPrice(order.amount)}</TableCell>
                           <TableCell>{getStatusBadge(order.payment_status)}</TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {new Date(order.created_at).toLocaleString()}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {/* Orders */}
-          {activeTab === "orders" && (
-            <Card>
-              <CardContent className="pt-6">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Order ID</TableHead>
-                      <TableHead>Minecraft User</TableHead>
-                      <TableHead>Discord</TableHead>
-                      <TableHead>Product</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Payment</TableHead>
-                      <TableHead>Delivery</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {orders.map((order) => (
-                      <TableRow key={order.id}>
-                        <TableCell className="font-mono text-xs">{order.order_id}</TableCell>
-                        <TableCell>{order.minecraft_username}</TableCell>
-                        <TableCell>{order.discord_username}</TableCell>
-                        <TableCell>{order.product_name}</TableCell>
-                        <TableCell>{formatPrice(order.amount)}</TableCell>
-                        <TableCell>{getStatusBadge(order.payment_status)}</TableCell>
-                        <TableCell>{getStatusBadge(order.delivery_status)}</TableCell>
-                        <TableCell>
-                          {order.payment_status === "paid" && order.delivery_status === "pending" && (
-                            <Button size="sm" variant="outline" onClick={() => retryDelivery(order.id)}>
-                              <RefreshCw className="w-3 h-3" />
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Coupons */}
-          {activeTab === "coupons" && (
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Create Coupon</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid md:grid-cols-4 gap-4">
-                    <div className="space-y-2">
-                      <Label>Code</Label>
-                      <Input
-                        placeholder="SUMMER10"
-                        value={newCoupon.code}
-                        onChange={(e) => setNewCoupon({ ...newCoupon, code: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Type</Label>
-                      <select
-                        className="w-full h-10 px-3 rounded-md border bg-background"
-                        value={newCoupon.type}
-                        onChange={(e) => setNewCoupon({ ...newCoupon, type: e.target.value })}
-                      >
-                        <option value="flat">Flat (₹ off)</option>
-                        <option value="percentage">Percentage (%)</option>
-                      </select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Value</Label>
-                      <Input
-                        type="number"
-                        value={newCoupon.value}
-                        onChange={(e) => setNewCoupon({ ...newCoupon, value: Number(e.target.value) })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Max Uses</Label>
-                      <Input
-                        type="number"
-                        value={newCoupon.maxUses}
-                        onChange={(e) => setNewCoupon({ ...newCoupon, maxUses: Number(e.target.value) })}
-                      />
-                    </div>
-                  </div>
-                  <Button onClick={createCoupon}>Create Coupon</Button>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Active Coupons</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Code</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead>Value</TableHead>
-                        <TableHead>Uses</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {coupons.map((coupon) => (
-                        <TableRow key={coupon.id}>
-                          <TableCell className="font-mono">{coupon.code}</TableCell>
-                          <TableCell className="capitalize">{coupon.type}</TableCell>
+                          <TableCell>{getStatusBadge(order.delivery_status)}</TableCell>
                           <TableCell>
-                            {coupon.type === "flat" ? formatPrice(coupon.value) : `${coupon.value}%`}
-                          </TableCell>
-                          <TableCell>
-                            {coupon.uses_count} / {coupon.max_uses}
-                          </TableCell>
-                          <TableCell>
-                            {coupon.is_active ? (
-                              <span className="text-green-500">Active</span>
-                            ) : (
-                              <span className="text-red-500">Inactive</span>
+                            {order.payment_status === "paid" && order.delivery_status === "pending" && (
+                              <Button size="sm" variant="outline" onClick={() => retryDelivery(order.id)} className="gap-1">
+                                <RefreshCw className="w-3 h-3" /> Retry
+                              </Button>
                             )}
                           </TableCell>
-                          <TableCell>
-                            <Button size="sm" variant="destructive" onClick={() => deleteCoupon(coupon.id)}>
-                              <X className="w-3 h-3" />
-                            </Button>
-                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                   </Table>
                 </CardContent>
               </Card>
-            </div>
-          )}
+            )}
 
-          {/* Settings */}
-          {activeTab === "settings" && (
-            <div className="space-y-6 max-w-2xl">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Maintenance Mode</CardTitle>
-                </CardHeader>
-                <CardContent className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">Enable Maintenance Mode</p>
-                    <p className="text-sm text-muted-foreground">
-                      When enabled, the store will show a maintenance page to all users.
-                    </p>
-                  </div>
-                  <Switch
-                    checked={settings.maintenance_mode === "true"}
-                    onCheckedChange={toggleMaintenance}
-                  />
-                </CardContent>
-              </Card>
+            {/* Logs */}
+            {activeTab === "logs" && (
+              <div className="space-y-6">
+                {/* Log Stats */}
+                <div className="grid lg:grid-cols-3 gap-6">
+                  <Card className="bg-card/50 backdrop-blur lg:col-span-2">
+                    <CardHeader>
+                      <CardTitle className="text-lg font-display flex items-center gap-2">
+                        <Activity className="w-5 h-5 text-primary" />
+                        Log Type Distribution
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {logTypeData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height={200}>
+                          <PieChart>
+                            <Pie
+                              data={logTypeData}
+                              cx="50%"
+                              cy="50%"
+                              outerRadius={80}
+                              paddingAngle={3}
+                              dataKey="value"
+                              label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                              labelLine={false}
+                            >
+                              {logTypeData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={logColors[entry.name] || "#8884d8"} />
+                              ))}
+                            </Pie>
+                            <Tooltip 
+                              contentStyle={{ 
+                                backgroundColor: 'hsl(220 18% 8%)', 
+                                border: '1px solid hsl(220 16% 16%)',
+                                borderRadius: '8px'
+                              }}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <div className="h-[200px] flex items-center justify-center text-muted-foreground">
+                          No log data available
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Contact Information</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Admin Email</Label>
-                    <Input value={settings.admin_email || ""} disabled />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Support Email</Label>
-                    <Input value={settings.support_email || ""} disabled />
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
+                  <Card className="bg-card/50 backdrop-blur">
+                    <CardHeader>
+                      <CardTitle className="text-lg font-display">Quick Stats</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Total Logs</span>
+                        <span className="font-bold">{logs.length}</span>
+                      </div>
+                      {logTypeData.map((type) => (
+                        <div key={type.name} className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {getLogIcon(type.name)}
+                            <span className="text-sm capitalize">{type.name}</span>
+                          </div>
+                          <span className="font-medium">{type.value}</span>
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Log Filter & List */}
+                <Card className="bg-card/50 backdrop-blur">
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <CardTitle className="text-lg font-display flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-primary" />
+                      System Logs
+                    </CardTitle>
+                    <div className="flex items-center gap-2">
+                      <Filter className="w-4 h-4 text-muted-foreground" />
+                      <select
+                        className="bg-background border border-border rounded-md px-3 py-1.5 text-sm"
+                        value={logFilter}
+                        onChange={(e) => setLogFilter(e.target.value)}
+                      >
+                        <option value="all">All Logs</option>
+                        {uniqueLogTypes.map((type) => (
+                          <option key={type} value={type} className="capitalize">{type}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2 max-h-[600px] overflow-y-auto pr-2">
+                      {filteredLogs.length > 0 ? (
+                        filteredLogs.map((log) => (
+                          <div
+                            key={log.id}
+                            className={`p-4 rounded-xl border ${getLogBgColor(log.type)} transition-all hover:scale-[1.01]`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="mt-0.5">{getLogIcon(log.type)}</div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                  <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                    {log.type}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground font-mono">
+                                    {new Date(log.created_at).toLocaleString()}
+                                  </span>
+                                </div>
+                                <p className="text-sm font-medium">{log.message}</p>
+                                {log.order_id && (
+                                  <p className="text-xs text-muted-foreground mt-1 font-mono">
+                                    Order: {log.order_id}
+                                  </p>
+                                )}
+                                {log.metadata && Object.keys(log.metadata).length > 0 && (
+                                  <details className="mt-2">
+                                    <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                                      View Details
+                                    </summary>
+                                    <pre className="mt-2 p-2 bg-background/50 rounded text-xs overflow-x-auto">
+                                      {JSON.stringify(log.metadata, null, 2)}
+                                    </pre>
+                                  </details>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center py-12 text-muted-foreground">
+                          <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                          <p>No logs found</p>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* Coupons */}
+            {activeTab === "coupons" && (
+              <div className="space-y-6">
+                <Card className="bg-card/50 backdrop-blur">
+                  <CardHeader>
+                    <CardTitle className="text-lg font-display flex items-center gap-2">
+                      <Ticket className="w-5 h-5 text-primary" />
+                      Create New Coupon
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid md:grid-cols-4 gap-4">
+                      <div className="space-y-2">
+                        <Label className="text-sm text-muted-foreground">Coupon Code</Label>
+                        <Input
+                          placeholder="SUMMER10"
+                          value={newCoupon.code}
+                          onChange={(e) => setNewCoupon({ ...newCoupon, code: e.target.value })}
+                          className="bg-background/50 uppercase"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm text-muted-foreground">Discount Type</Label>
+                        <select
+                          className="w-full h-10 px-3 rounded-md border border-border bg-background/50"
+                          value={newCoupon.type}
+                          onChange={(e) => setNewCoupon({ ...newCoupon, type: e.target.value })}
+                        >
+                          <option value="flat">Flat (₹ off)</option>
+                          <option value="percentage">Percentage (%)</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm text-muted-foreground">Value</Label>
+                        <Input
+                          type="number"
+                          value={newCoupon.value}
+                          onChange={(e) => setNewCoupon({ ...newCoupon, value: Number(e.target.value) })}
+                          className="bg-background/50"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm text-muted-foreground">Max Uses</Label>
+                        <Input
+                          type="number"
+                          value={newCoupon.maxUses}
+                          onChange={(e) => setNewCoupon({ ...newCoupon, maxUses: Number(e.target.value) })}
+                          className="bg-background/50"
+                        />
+                      </div>
+                    </div>
+                    <Button onClick={createCoupon} className="gap-2">
+                      <Ticket className="w-4 h-4" />
+                      Create Coupon
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-card/50 backdrop-blur">
+                  <CardHeader>
+                    <CardTitle className="text-lg font-display">Active Coupons</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="border-border/50">
+                          <TableHead className="text-muted-foreground">Code</TableHead>
+                          <TableHead className="text-muted-foreground">Type</TableHead>
+                          <TableHead className="text-muted-foreground">Value</TableHead>
+                          <TableHead className="text-muted-foreground">Uses</TableHead>
+                          <TableHead className="text-muted-foreground">Status</TableHead>
+                          <TableHead className="text-muted-foreground">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {coupons.map((coupon) => (
+                          <TableRow key={coupon.id} className="border-border/30 hover:bg-muted/30">
+                            <TableCell className="font-mono font-bold">{coupon.code}</TableCell>
+                            <TableCell className="capitalize">{coupon.type}</TableCell>
+                            <TableCell className="font-semibold text-primary">
+                              {coupon.type === "flat" ? formatPrice(coupon.value) : `${coupon.value}%`}
+                            </TableCell>
+                            <TableCell>
+                              <span className="font-mono">{coupon.uses_count}</span>
+                              <span className="text-muted-foreground"> / {coupon.max_uses}</span>
+                            </TableCell>
+                            <TableCell>
+                              {coupon.is_active ? (
+                                <span className="inline-flex items-center gap-1 bg-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-full text-xs font-medium">
+                                  <CheckCircle2 className="w-3 h-3" /> Active
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 bg-red-500/20 text-red-400 px-2.5 py-1 rounded-full text-xs font-medium">
+                                  <XCircle className="w-3 h-3" /> Inactive
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Button size="sm" variant="destructive" onClick={() => deleteCoupon(coupon.id)} className="gap-1">
+                                <X className="w-3 h-3" /> Delete
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* Settings */}
+            {activeTab === "settings" && (
+              <div className="space-y-6 max-w-2xl">
+                <Card className="bg-card/50 backdrop-blur">
+                  <CardHeader>
+                    <CardTitle className="text-lg font-display flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-yellow-400" />
+                      Maintenance Mode
+                    </CardTitle>
+                    <CardDescription>
+                      Enable maintenance mode to prevent customers from accessing the store
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">Store Offline</p>
+                      <p className="text-sm text-muted-foreground">
+                        When enabled, visitors will see a maintenance page
+                      </p>
+                    </div>
+                    <Switch
+                      checked={settings.maintenance_mode === "true"}
+                      onCheckedChange={toggleMaintenance}
+                    />
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-card/50 backdrop-blur">
+                  <CardHeader>
+                    <CardTitle className="text-lg font-display flex items-center gap-2">
+                      <Server className="w-5 h-5 text-primary" />
+                      Server Information
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid gap-4">
+                      <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg">
+                        <span className="text-muted-foreground">RCON Status</span>
+                        <span className="inline-flex items-center gap-1 text-emerald-400">
+                          <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+                          Connected
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg">
+                        <span className="text-muted-foreground">Payment Gateway</span>
+                        <span className="inline-flex items-center gap-1 text-emerald-400">
+                          <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
+                          Razorpay Active
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-card/50 backdrop-blur">
+                  <CardHeader>
+                    <CardTitle className="text-lg font-display flex items-center gap-2">
+                      <Users className="w-5 h-5 text-primary" />
+                      Contact Information
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label className="text-sm text-muted-foreground">Admin Email</Label>
+                      <Input value={settings.admin_email || "admin@axisstore.com"} disabled className="bg-background/50" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm text-muted-foreground">Support Email</Label>
+                      <Input value={settings.support_email || "support@axisstore.com"} disabled className="bg-background/50" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </>
