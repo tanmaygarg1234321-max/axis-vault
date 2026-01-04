@@ -14,7 +14,217 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      active_ranks: {
+        Row: {
+          expires_at: string
+          granted_at: string
+          id: string
+          is_active: boolean | null
+          minecraft_username: string
+          order_id: string | null
+          rank_name: string
+          removed_at: string | null
+        }
+        Insert: {
+          expires_at: string
+          granted_at?: string
+          id?: string
+          is_active?: boolean | null
+          minecraft_username: string
+          order_id?: string | null
+          rank_name: string
+          removed_at?: string | null
+        }
+        Update: {
+          expires_at?: string
+          granted_at?: string
+          id?: string
+          is_active?: boolean | null
+          minecraft_username?: string
+          order_id?: string | null
+          rank_name?: string
+          removed_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "active_ranks_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      admin_users: {
+        Row: {
+          created_at: string
+          id: string
+          password_hash: string
+          username: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          password_hash: string
+          username: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          password_hash?: string
+          username?: string
+        }
+        Relationships: []
+      }
+      coupons: {
+        Row: {
+          code: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          is_active: boolean | null
+          max_uses: number | null
+          type: string
+          uses_count: number | null
+          value: number
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_uses?: number | null
+          type: string
+          uses_count?: number | null
+          value: number
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_uses?: number | null
+          type?: string
+          uses_count?: number | null
+          value?: number
+        }
+        Relationships: []
+      }
+      logs: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          metadata: Json | null
+          order_id: string | null
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          metadata?: Json | null
+          order_id?: string | null
+          type: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          metadata?: Json | null
+          order_id?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "logs_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orders: {
+        Row: {
+          amount: number
+          command_executed: string | null
+          created_at: string
+          delivery_status: string | null
+          discord_username: string
+          error_log: string | null
+          gift_to: string | null
+          id: string
+          minecraft_username: string
+          order_id: string
+          payment_status: Database["public"]["Enums"]["order_status"]
+          product_name: string
+          product_type: Database["public"]["Enums"]["product_type"]
+          razorpay_order_id: string | null
+          razorpay_payment_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          command_executed?: string | null
+          created_at?: string
+          delivery_status?: string | null
+          discord_username: string
+          error_log?: string | null
+          gift_to?: string | null
+          id?: string
+          minecraft_username: string
+          order_id: string
+          payment_status?: Database["public"]["Enums"]["order_status"]
+          product_name: string
+          product_type: Database["public"]["Enums"]["product_type"]
+          razorpay_order_id?: string | null
+          razorpay_payment_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          command_executed?: string | null
+          created_at?: string
+          delivery_status?: string | null
+          discord_username?: string
+          error_log?: string | null
+          gift_to?: string | null
+          id?: string
+          minecraft_username?: string
+          order_id?: string
+          payment_status?: Database["public"]["Enums"]["order_status"]
+          product_name?: string
+          product_type?: Database["public"]["Enums"]["product_type"]
+          razorpay_order_id?: string | null
+          razorpay_payment_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      site_settings: {
+        Row: {
+          id: string
+          key: string
+          updated_at: string
+          value: string
+        }
+        Insert: {
+          id?: string
+          key: string
+          updated_at?: string
+          value: string
+        }
+        Update: {
+          id?: string
+          key?: string
+          updated_at?: string
+          value?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +233,8 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      order_status: "pending" | "paid" | "delivered" | "failed" | "refunded"
+      product_type: "rank" | "crate" | "money"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +361,9 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      order_status: ["pending", "paid", "delivered", "failed", "refunded"],
+      product_type: ["rank", "crate", "money"],
+    },
   },
 } as const
