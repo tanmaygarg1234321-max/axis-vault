@@ -155,7 +155,7 @@ serve(async (req) => {
 
           if (order.product_type === "rank") {
             const rankName = order.product_name.replace(" Rank", "").toLowerCase();
-            command = `lp user ${targetUsername} parent set ${rankName}`;
+            command = `lp user ${targetUsername} parent addtemp ${rankName} 30d`;
           } else if (order.product_type === "money") {
             const amountStr = order.product_name.replace(" In-Game Money", "");
             let amount = 0;
@@ -288,6 +288,66 @@ serve(async (req) => {
             type: "admin",
             message: `Coupon deleted`,
             metadata: { couponId: params.couponId },
+          }),
+        });
+        break;
+      }
+
+      case "update_coupon": {
+        await fetch(`${supabaseUrl}/rest/v1/coupons?id=eq.${params.couponId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Prefer": "return=minimal",
+          },
+          body: JSON.stringify(params.updates),
+        });
+
+        // Log
+        await fetch(`${supabaseUrl}/rest/v1/logs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Prefer": "return=minimal",
+          },
+          body: JSON.stringify({
+            type: "admin",
+            message: `Coupon updated: ${params.updates.code || params.couponId}`,
+            metadata: { couponId: params.couponId, updates: params.updates },
+          }),
+        });
+        break;
+      }
+
+      case "toggle_coupon_status": {
+        await fetch(`${supabaseUrl}/rest/v1/coupons?id=eq.${params.couponId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Prefer": "return=minimal",
+          },
+          body: JSON.stringify({ is_active: params.isActive }),
+        });
+
+        // Log
+        await fetch(`${supabaseUrl}/rest/v1/logs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Prefer": "return=minimal",
+          },
+          body: JSON.stringify({
+            type: "admin",
+            message: `Coupon ${params.isActive ? 'activated' : 'deactivated'}`,
+            metadata: { couponId: params.couponId, isActive: params.isActive },
           }),
         });
         break;

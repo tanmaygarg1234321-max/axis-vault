@@ -33,9 +33,13 @@ serve(async (req) => {
     const { type, to, orderData, expiryData }: EmailRequest = await req.json();
 
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    const senderEmail = Deno.env.get("SENDER_EMAIL") || "noreply@axisstore.com";
+    const senderEmail = Deno.env.get("SENDER_EMAIL") || "onboarding@resend.dev";
+
+    console.log("Email request:", { type, to, hasOrderData: !!orderData, hasExpiryData: !!expiryData });
+    console.log("Sender email:", senderEmail);
 
     if (!resendApiKey) {
+      console.error("RESEND_API_KEY not configured");
       throw new Error("RESEND_API_KEY not configured");
     }
 
@@ -217,6 +221,9 @@ serve(async (req) => {
       `;
     }
 
+    console.log("Sending email with subject:", subject);
+    console.log("To:", to);
+
     // Send email via Resend
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -232,13 +239,21 @@ serve(async (req) => {
       }),
     });
 
+    const responseText = await response.text();
+    console.log("Resend response status:", response.status);
+    console.log("Resend response:", responseText);
+
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Resend error:", errorText);
-      throw new Error(`Failed to send email: ${errorText}`);
+      console.error("Resend error:", responseText);
+      throw new Error(`Failed to send email: ${responseText}`);
     }
 
-    const result = await response.json();
+    let result;
+    try {
+      result = JSON.parse(responseText);
+    } catch {
+      result = { id: "unknown" };
+    }
     console.log("Email sent successfully:", result);
 
     return new Response(

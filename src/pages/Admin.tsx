@@ -49,6 +49,10 @@ import {
   Search,
   Trash2,
   RotateCcw,
+  Edit2,
+  Save,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -105,6 +109,15 @@ const Admin = () => {
     type: "flat",
     value: 0,
     maxUses: 100,
+  });
+
+  // Coupon edit state
+  const [editingCoupon, setEditingCoupon] = useState<string | null>(null);
+  const [editCouponData, setEditCouponData] = useState({
+    code: "",
+    type: "flat",
+    value: 0,
+    max_uses: 100,
   });
 
   // Check auth on load
@@ -263,6 +276,52 @@ const Admin = () => {
     });
     if (!error) {
       toast.success("Coupon deleted");
+      fetchData();
+    }
+  };
+
+  const startEditCoupon = (coupon: any) => {
+    setEditingCoupon(coupon.id);
+    setEditCouponData({
+      code: coupon.code,
+      type: coupon.type,
+      value: coupon.value,
+      max_uses: coupon.max_uses,
+    });
+  };
+
+  const saveEditCoupon = async (couponId: string) => {
+    const { error } = await supabase.functions.invoke("admin-action", {
+      body: { 
+        action: "update_coupon", 
+        couponId,
+        updates: {
+          code: editCouponData.code.toUpperCase(),
+          type: editCouponData.type,
+          value: editCouponData.value,
+          max_uses: editCouponData.max_uses,
+        },
+      },
+    });
+    if (!error) {
+      toast.success("Coupon updated");
+      setEditingCoupon(null);
+      fetchData();
+    } else {
+      toast.error("Failed to update coupon");
+    }
+  };
+
+  const toggleCouponStatus = async (couponId: string, currentStatus: boolean) => {
+    const { error } = await supabase.functions.invoke("admin-action", {
+      body: { 
+        action: "toggle_coupon_status", 
+        couponId,
+        isActive: !currentStatus,
+      },
+    });
+    if (!error) {
+      toast.success(`Coupon ${!currentStatus ? 'activated' : 'deactivated'}`);
       fetchData();
     }
   };
@@ -1107,30 +1166,100 @@ const Admin = () => {
                       <TableBody>
                         {coupons.map((coupon) => (
                           <TableRow key={coupon.id} className="border-border/30 hover:bg-muted/30">
-                            <TableCell className="font-mono font-bold">{coupon.code}</TableCell>
-                            <TableCell className="capitalize">{coupon.type}</TableCell>
-                            <TableCell className="font-semibold text-primary">
-                              {coupon.type === "flat" ? formatPrice(coupon.value) : `${coupon.value}%`}
-                            </TableCell>
                             <TableCell>
-                              <span className="font-mono">{coupon.uses_count || 0}</span>
-                              <span className="text-muted-foreground"> / {coupon.max_uses}</span>
-                            </TableCell>
-                            <TableCell>
-                              {coupon.is_active ? (
-                                <span className="inline-flex items-center gap-1 bg-emerald-500/20 text-emerald-400 px-2.5 py-1 rounded-full text-xs font-medium">
-                                  <CheckCircle2 className="w-3 h-3" /> Active
-                                </span>
+                              {editingCoupon === coupon.id ? (
+                                <Input
+                                  value={editCouponData.code}
+                                  onChange={(e) => setEditCouponData({ ...editCouponData, code: e.target.value })}
+                                  className="w-24 h-8 uppercase bg-background/50"
+                                />
                               ) : (
-                                <span className="inline-flex items-center gap-1 bg-red-500/20 text-red-400 px-2.5 py-1 rounded-full text-xs font-medium">
-                                  <XCircle className="w-3 h-3" /> Inactive
+                                <span className="font-mono font-bold">{coupon.code}</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {editingCoupon === coupon.id ? (
+                                <select
+                                  className="h-8 px-2 rounded-md border border-border bg-background/50 text-sm"
+                                  value={editCouponData.type}
+                                  onChange={(e) => setEditCouponData({ ...editCouponData, type: e.target.value })}
+                                >
+                                  <option value="flat">Flat</option>
+                                  <option value="percentage">%</option>
+                                </select>
+                              ) : (
+                                <span className="capitalize">{coupon.type}</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              {editingCoupon === coupon.id ? (
+                                <Input
+                                  type="number"
+                                  value={editCouponData.value}
+                                  onChange={(e) => setEditCouponData({ ...editCouponData, value: Number(e.target.value) })}
+                                  className="w-20 h-8 bg-background/50"
+                                />
+                              ) : (
+                                <span className="font-semibold text-primary">
+                                  {coupon.type === "flat" ? formatPrice(coupon.value) : `${coupon.value}%`}
                                 </span>
                               )}
                             </TableCell>
                             <TableCell>
-                              <Button size="sm" variant="destructive" onClick={() => deleteCoupon(coupon.id)} className="gap-1">
-                                <X className="w-3 h-3" /> Delete
+                              {editingCoupon === coupon.id ? (
+                                <Input
+                                  type="number"
+                                  value={editCouponData.max_uses}
+                                  onChange={(e) => setEditCouponData({ ...editCouponData, max_uses: Number(e.target.value) })}
+                                  className="w-20 h-8 bg-background/50"
+                                />
+                              ) : (
+                                <>
+                                  <span className="font-mono">{coupon.uses_count || 0}</span>
+                                  <span className="text-muted-foreground"> / {coupon.max_uses}</span>
+                                </>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Button 
+                                size="sm" 
+                                variant="ghost" 
+                                onClick={() => toggleCouponStatus(coupon.id, coupon.is_active)}
+                                className={`gap-1 ${coupon.is_active ? 'text-emerald-400 hover:text-emerald-300' : 'text-red-400 hover:text-red-300'}`}
+                              >
+                                {coupon.is_active ? (
+                                  <>
+                                    <ToggleRight className="w-4 h-4" /> Active
+                                  </>
+                                ) : (
+                                  <>
+                                    <ToggleLeft className="w-4 h-4" /> Inactive
+                                  </>
+                                )}
                               </Button>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                {editingCoupon === coupon.id ? (
+                                  <>
+                                    <Button size="sm" variant="default" onClick={() => saveEditCoupon(coupon.id)} className="gap-1 h-8">
+                                      <Save className="w-3 h-3" /> Save
+                                    </Button>
+                                    <Button size="sm" variant="ghost" onClick={() => setEditingCoupon(null)} className="h-8">
+                                      <X className="w-3 h-3" />
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Button size="sm" variant="outline" onClick={() => startEditCoupon(coupon)} className="gap-1 h-8">
+                                      <Edit2 className="w-3 h-3" /> Edit
+                                    </Button>
+                                    <Button size="sm" variant="destructive" onClick={() => deleteCoupon(coupon.id)} className="gap-1 h-8">
+                                      <Trash2 className="w-3 h-3" />
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
