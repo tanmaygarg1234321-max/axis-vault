@@ -181,10 +181,10 @@ serve(async (req) => {
       if (expiresAt <= now) {
         console.log(`Rank EXPIRED: ${rank.rank_name} for ${rank.minecraft_username}`);
 
-        // Remove rank via RCON
+        // Remove rank via RCON (using removetemp for temporary ranks)
         if (rconConnected && rcon) {
           try {
-            const command = `lp user ${rank.minecraft_username} parent remove ${rank.rank_name}`;
+            const command = `lp user ${rank.minecraft_username} parent removetemp ${rank.rank_name}`;
             const result = await rcon.sendCommand(command);
             console.log(`RCON remove result for ${rank.minecraft_username}:`, result);
             expiredRanks.push(`${rank.minecraft_username} - ${rank.rank_name}`);

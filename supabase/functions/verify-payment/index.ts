@@ -239,7 +239,7 @@ serve(async (req) => {
       if (order.product_type === "rank") {
         // Extract rank name from product_name
         const rankName = order.product_name.replace(" Rank", "").toLowerCase();
-        command = `lp user ${targetUsername} parent set ${rankName}`;
+        command = `lp user ${targetUsername} parent addtemp ${rankName} 30d`;
         
         // Execute RCON command
         if (rconConnected && rcon) {
