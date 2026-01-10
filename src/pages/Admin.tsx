@@ -78,6 +78,14 @@ const Admin = () => {
   const [loginLoading, setLoginLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("dashboard");
 
+  // Password change state
+  const [showPasswordChangeDialog, setShowPasswordChangeDialog] = useState(false);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordChangeLoading, setPasswordChangeLoading] = useState(false);
+
   // Data states
   const [orders, setOrders] = useState<any[]>([]);
   const [coupons, setCoupons] = useState<any[]>([]);
@@ -169,9 +177,18 @@ const Admin = () => {
         sessionStorage.setItem("admin_token", data.token);
         sessionStorage.setItem("admin_username", username);
         setIsAuthenticated(true);
-        setPassword(""); // Clear password from state
-        fetchData();
-        toast.success("Login successful");
+        
+        // Check if password change is required
+        if (data.mustChangePassword) {
+          setMustChangePassword(true);
+          setShowPasswordChangeDialog(true);
+          setCurrentPassword(password); // Pre-fill current password
+          toast.warning("You must change your password before continuing");
+        } else {
+          setPassword(""); // Clear password from state
+          fetchData();
+          toast.success("Login successful");
+        }
       } else {
         toast.error(data.error || "Invalid credentials");
       }
@@ -179,6 +196,67 @@ const Admin = () => {
       toast.error("Login failed");
     }
     setLoginLoading(false);
+  };
+
+  const handlePasswordChange = async () => {
+    if (!newPassword || !confirmPassword) {
+      toast.error("Please fill in all password fields");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    if (newPassword.length < 12) {
+      toast.error("Password must be at least 12 characters");
+      return;
+    }
+
+    const hasUpperCase = /[A-Z]/.test(newPassword);
+    const hasLowerCase = /[a-z]/.test(newPassword);
+    const hasNumber = /[0-9]/.test(newPassword);
+    const hasSpecial = /[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\;'/`~]/.test(newPassword);
+
+    if (!hasUpperCase || !hasLowerCase || !hasNumber || !hasSpecial) {
+      toast.error("Password must contain uppercase, lowercase, number, and special character");
+      return;
+    }
+
+    setPasswordChangeLoading(true);
+    try {
+      const token = getAdminToken();
+      const { data, error } = await supabase.functions.invoke("admin-login", {
+        headers: { Authorization: `Bearer ${token}` },
+        body: { 
+          action: "change_password",
+          currentPassword,
+          newPassword,
+        },
+      });
+
+      if (error) throw error;
+      if (data.success) {
+        // Update token with new one
+        if (data.token) {
+          sessionStorage.setItem("admin_token", data.token);
+        }
+        setShowPasswordChangeDialog(false);
+        setMustChangePassword(false);
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setPassword("");
+        fetchData();
+        toast.success("Password changed successfully!");
+      } else {
+        toast.error(data.error || "Failed to change password");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to change password");
+    }
+    setPasswordChangeLoading(false);
   };
 
   const handleLogout = () => {
@@ -622,6 +700,89 @@ const Admin = () => {
             >
               {clearLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Trash2 className="w-4 h-4 mr-2" />}
               Clear All Data
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Password Change Dialog */}
+      <Dialog open={showPasswordChangeDialog} onOpenChange={(open) => {
+        // Don't allow closing if password change is required
+        if (!open && mustChangePassword) {
+          toast.error("You must change your password before continuing");
+          return;
+        }
+        setShowPasswordChangeDialog(open);
+      }}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shield className="w-5 h-5 text-primary" />
+              Change Password
+            </DialogTitle>
+            <DialogDescription>
+              {mustChangePassword 
+                ? "Your password must be changed before you can continue. Please set a strong password."
+                : "Update your admin password."
+              }
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {mustChangePassword && (
+              <div className="flex items-center gap-2 p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                <AlertTriangle className="w-5 h-5 text-yellow-400" />
+                <span className="text-sm">
+                  You are using the default password. Please change it immediately.
+                </span>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Current Password</Label>
+              <Input
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                placeholder="Enter current password"
+                className="bg-background/50"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>New Password</Label>
+              <Input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Enter new password"
+                className="bg-background/50"
+              />
+              <p className="text-xs text-muted-foreground">
+                Must be 12+ characters with uppercase, lowercase, number, and special character.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Confirm New Password</Label>
+              <Input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Confirm new password"
+                className="bg-background/50"
+                onKeyDown={(e) => e.key === "Enter" && handlePasswordChange()}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            {!mustChangePassword && (
+              <Button variant="outline" onClick={() => setShowPasswordChangeDialog(false)}>
+                Cancel
+              </Button>
+            )}
+            <Button 
+              onClick={handlePasswordChange}
+              disabled={passwordChangeLoading}
+            >
+              {passwordChangeLoading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+              Change Password
             </Button>
           </DialogFooter>
         </DialogContent>

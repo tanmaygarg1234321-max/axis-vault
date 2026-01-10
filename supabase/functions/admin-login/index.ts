@@ -13,10 +13,39 @@ function validateUsername(username: string): boolean {
   return /^[a-zA-Z0-9_]{3,50}$/.test(username);
 }
 
-// Validate password (non-empty, max 128 chars)
-function validatePassword(password: string): boolean {
+// Validate password format (non-empty, max 128 chars)
+function validatePasswordFormat(password: string): boolean {
   if (!password || typeof password !== 'string') return false;
   return password.length >= 1 && password.length <= 128;
+}
+
+// Validate strong password for password changes (12+ chars with complexity)
+function validateStrongPassword(password: string): { valid: boolean; error?: string } {
+  if (!password || typeof password !== 'string') {
+    return { valid: false, error: "Password is required" };
+  }
+  
+  if (password.length < 12) {
+    return { valid: false, error: "Password must be at least 12 characters" };
+  }
+  
+  if (password.length > 128) {
+    return { valid: false, error: "Password must be less than 128 characters" };
+  }
+  
+  const hasUpperCase = /[A-Z]/.test(password);
+  const hasLowerCase = /[a-z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  const hasSpecial = /[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\;'/`~]/.test(password);
+  
+  if (!hasUpperCase || !hasLowerCase || !hasNumber || !hasSpecial) {
+    return { 
+      valid: false, 
+      error: "Password must contain uppercase, lowercase, number, and special character" 
+    };
+  }
+  
+  return { valid: true };
 }
 
 serve(async (req) => {
@@ -25,26 +54,8 @@ serve(async (req) => {
   }
 
   try {
-    const { username, password } = await req.json();
-
-    // Input validation
-    if (!validateUsername(username)) {
-      console.log("Invalid username format");
-      return new Response(
-        JSON.stringify({ success: false, error: "Invalid credentials" }),
-        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    if (!validatePassword(password)) {
-      console.log("Invalid password format");
-      return new Response(
-        JSON.stringify({ success: false, error: "Invalid credentials" }),
-        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    console.log("Admin login attempt:", username);
+    const body = await req.json();
+    const { username, password, action, currentPassword, newPassword } = body;
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -58,9 +69,184 @@ serve(async (req) => {
       );
     }
 
+    // Handle password change action
+    if (action === "change_password") {
+      const authHeader = req.headers.get("authorization");
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Unauthorized" }),
+          { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
+      // Verify JWT token
+      const token = authHeader.replace("Bearer ", "");
+      try {
+        const key = await crypto.subtle.importKey(
+          "raw",
+          new TextEncoder().encode(jwtSecret),
+          { name: "HMAC", hash: "SHA-256" },
+          false,
+          ["verify"]
+        );
+        
+        const [headerB64, payloadB64] = token.split(".");
+        const payload = JSON.parse(atob(payloadB64));
+        
+        if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+          throw new Error("Token expired");
+        }
+
+        // Validate current password
+        if (!validatePasswordFormat(currentPassword)) {
+          return new Response(
+            JSON.stringify({ success: false, error: "Current password is required" }),
+            { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        }
+
+        // Validate new password strength
+        const passwordValidation = validateStrongPassword(newPassword);
+        if (!passwordValidation.valid) {
+          return new Response(
+            JSON.stringify({ success: false, error: passwordValidation.error }),
+            { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        }
+
+        // Fetch admin user
+        const response = await fetch(
+          `${supabaseUrl}/rest/v1/admin_users?id=eq.${encodeURIComponent(payload.sub)}&select=id,username,password_hash`,
+          {
+            headers: {
+              "apikey": supabaseKey,
+              "Authorization": `Bearer ${supabaseKey}`,
+            },
+          }
+        );
+
+        const users = await response.json();
+        if (!users || users.length === 0) {
+          return new Response(
+            JSON.stringify({ success: false, error: "User not found" }),
+            { status: 404, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        }
+
+        const adminUser = users[0];
+
+        // Verify current password
+        const isCurrentValid = await bcrypt.compare(currentPassword, adminUser.password_hash);
+        if (!isCurrentValid) {
+          console.log("Password change failed - current password incorrect");
+          return new Response(
+            JSON.stringify({ success: false, error: "Current password is incorrect" }),
+            { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        }
+
+        // Hash new password
+        const salt = await bcrypt.genSalt(10);
+        const newPasswordHash = await bcrypt.hash(newPassword, salt);
+
+        // Update password
+        const updateResponse = await fetch(
+          `${supabaseUrl}/rest/v1/admin_users?id=eq.${encodeURIComponent(payload.sub)}`,
+          {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": supabaseKey,
+              "Authorization": `Bearer ${supabaseKey}`,
+              "Prefer": "return=minimal",
+            },
+            body: JSON.stringify({
+              password_hash: newPasswordHash,
+              must_change_password: false,
+              password_changed_at: new Date().toISOString(),
+            }),
+          }
+        );
+
+        if (!updateResponse.ok) {
+          throw new Error("Failed to update password");
+        }
+
+        console.log(`Password changed for admin: ${adminUser.username}`);
+
+        // Log password change
+        await fetch(`${supabaseUrl}/rest/v1/logs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Prefer": "return=minimal",
+          },
+          body: JSON.stringify({
+            type: "admin",
+            message: `Admin password changed: ${adminUser.username}`,
+            metadata: { username: adminUser.username, timestamp: new Date().toISOString() },
+          }),
+        });
+
+        // Issue new token
+        const newKey = await crypto.subtle.importKey(
+          "raw",
+          new TextEncoder().encode(jwtSecret),
+          { name: "HMAC", hash: "SHA-256" },
+          false,
+          ["sign", "verify"]
+        );
+
+        const newToken = await create(
+          { alg: "HS256", typ: "JWT" },
+          {
+            sub: adminUser.id,
+            username: adminUser.username,
+            role: "admin",
+            exp: getNumericDate(60 * 60 * 8),
+            iat: getNumericDate(0),
+          },
+          newKey
+        );
+
+        return new Response(
+          JSON.stringify({ success: true, token: newToken, message: "Password changed successfully" }),
+          { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      } catch (err: any) {
+        console.error("Password change error:", err);
+        return new Response(
+          JSON.stringify({ success: false, error: "Authentication failed" }),
+          { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+    }
+
+    // Handle login action
+    // Input validation
+    if (!validateUsername(username)) {
+      console.log("Invalid username format");
+      return new Response(
+        JSON.stringify({ success: false, error: "Invalid credentials" }),
+        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    if (!validatePasswordFormat(password)) {
+      console.log("Invalid password format");
+      return new Response(
+        JSON.stringify({ success: false, error: "Invalid credentials" }),
+        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    console.log("Admin login attempt:", username);
+
     // Fetch admin user from database using parameterized query
     const response = await fetch(
-      `${supabaseUrl}/rest/v1/admin_users?username=eq.${encodeURIComponent(username)}&select=id,username,password_hash`,
+      `${supabaseUrl}/rest/v1/admin_users?username=eq.${encodeURIComponent(username)}&select=id,username,password_hash,must_change_password`,
       {
         headers: {
           "apikey": supabaseKey,
@@ -134,7 +320,11 @@ serve(async (req) => {
     });
 
     return new Response(
-      JSON.stringify({ success: true, token }),
+      JSON.stringify({ 
+        success: true, 
+        token,
+        mustChangePassword: adminUser.must_change_password === true,
+      }),
       {
         status: 200,
         headers: { "Content-Type": "application/json", ...corsHeaders },
