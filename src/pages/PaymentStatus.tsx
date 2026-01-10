@@ -21,35 +21,29 @@ const PaymentStatus = () => {
     const fetchOrderDetails = async () => {
       if (orderId && isSuccess) {
         try {
-          const { data } = await supabase
-            .from("orders")
-            .select("product_type, delivery_status")
-            .eq("order_id", orderId)
-            .maybeSingle();
+          // Use secure RPC function to lookup order (no auth required, limited data returned)
+          const { data } = await supabase.rpc('lookup_order_by_order_id', {
+            p_order_id: orderId
+          });
           
-          if (data) {
-            setProductType(data.product_type);
-            setDeliveryStatus(data.delivery_status);
+          if (data && data.length > 0) {
+            const order = data[0];
+            // The RPC only returns: id, order_id, payment_status, delivery_status, product_name, created_at
+            // We can infer product type from product_name
+            const productName = order.product_name?.toLowerCase() || '';
+            let inferredType = 'rank';
+            if (productName.includes('crate') || productName.includes('key')) {
+              inferredType = 'crate';
+            } else if (productName.includes('money') || productName.includes('₹') || productName.includes('$')) {
+              inferredType = 'money';
+            }
+            
+            setProductType(inferredType);
+            setDeliveryStatus(order.delivery_status);
 
-            // If it's a rank, check expiry
-            if (data.product_type === "rank") {
-              const { data: rankData } = await supabase
-                .from("active_ranks")
-                .select("expires_at")
-                .eq("minecraft_username", orderId)
-                .order("created_at", { ascending: false })
-                .limit(1);
-
-              if (rankData && rankData.length > 0) {
-                const expiresAt = new Date(rankData[0].expires_at);
-                const now = new Date();
-                const diffTime = expiresAt.getTime() - now.getTime();
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                setExpiryDays(diffDays > 0 ? diffDays : 0);
-              } else {
-                // Default 30 days if no record found yet
-                setExpiryDays(30);
-              }
+            // For ranks, default to 30 days (we can't access active_ranks without auth)
+            if (inferredType === "rank") {
+              setExpiryDays(30);
             }
           }
         } catch (err) {
