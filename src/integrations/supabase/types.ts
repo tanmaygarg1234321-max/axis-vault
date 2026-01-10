@@ -266,7 +266,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      lookup_order_by_order_id: {
+        Args: { p_order_id: string }
+        Returns: {
+          created_at: string
+          delivery_status: string
+          id: string
+          order_id: string
+          payment_status: string
+          product_name: string
+        }[]
+      }
     }
     Enums: {
       order_status: "pending" | "paid" | "delivered" | "failed" | "refunded"

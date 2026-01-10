@@ -5,6 +5,26 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Validate Minecraft username: 3-16 characters, alphanumeric and underscore only
+function validateMinecraftUsername(username: string): boolean {
+  if (!username || typeof username !== 'string') return false;
+  return /^[a-zA-Z0-9_]{3,16}$/.test(username);
+}
+
+// Sanitize string for RCON command (remove any potentially dangerous characters)
+function sanitizeForRCON(input: string): string {
+  if (!input || typeof input !== 'string') return '';
+  // Only allow alphanumeric, underscore, and hyphen
+  return input.replace(/[^a-zA-Z0-9_-]/g, '');
+}
+
+// Validate and sanitize rank name
+function sanitizeRankName(rankName: string): string {
+  if (!rankName || typeof rankName !== 'string') return '';
+  // Remove " Rank" suffix and lowercase, then sanitize
+  return sanitizeForRCON(rankName.replace(/ Rank$/i, "").toLowerCase());
+}
+
 // RCON client for Minecraft server
 class RCONClient {
   private host: string;
@@ -160,7 +180,7 @@ serve(async (req) => {
 
     // Fetch order details
     const orderResponse = await fetch(
-      `${supabaseUrl}/rest/v1/orders?order_id=eq.${orderId}&select=*`,
+      `${supabaseUrl}/rest/v1/orders?order_id=eq.${encodeURIComponent(orderId)}&select=*`,
       {
         headers: {
           "apikey": supabaseKey,
@@ -176,6 +196,16 @@ serve(async (req) => {
 
     const order = orders[0];
     console.log("Order found:", order);
+
+    // Validate usernames from order
+    const targetUsername = order.gift_to || order.minecraft_username;
+    
+    if (!validateMinecraftUsername(targetUsername)) {
+      console.error("Invalid username in order:", targetUsername);
+      throw new Error("Invalid username format in order");
+    }
+
+    const safeUsername = sanitizeForRCON(targetUsername);
 
     // Update order status to paid
     await fetch(`${supabaseUrl}/rest/v1/orders?id=eq.${order.id}`, {
@@ -210,7 +240,6 @@ serve(async (req) => {
     });
 
     // Process delivery with RCON
-    const targetUsername = order.gift_to || order.minecraft_username;
     let command = "";
     let deliverySuccess = false;
     let errorLog = "";
@@ -237,9 +266,13 @@ serve(async (req) => {
 
     try {
       if (order.product_type === "rank") {
-        // Extract rank name from product_name
-        const rankName = order.product_name.replace(" Rank", "").toLowerCase();
-        command = `lp user ${targetUsername} parent addtemp ${rankName} 30d`;
+        // Extract and sanitize rank name
+        const safeRankName = sanitizeRankName(order.product_name);
+        if (!safeRankName) {
+          throw new Error("Invalid rank name format");
+        }
+        
+        command = `lp user ${safeUsername} parent addtemp ${safeRankName} 30d`;
         
         // Execute RCON command
         if (rconConnected && rcon) {
@@ -278,13 +311,13 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             order_id: order.id,
-            minecraft_username: targetUsername,
-            rank_name: rankName,
+            minecraft_username: safeUsername,
+            rank_name: safeRankName,
             expires_at: expiresAt.toISOString(),
           }),
         });
 
-        console.log(`Rank ${rankName} granted to ${targetUsername} until ${expiresAt}`);
+        console.log(`Rank ${safeRankName} granted to ${safeUsername} until ${expiresAt}`);
         deliverySuccess = true;
 
       } else if (order.product_type === "money") {
@@ -296,7 +329,13 @@ serve(async (req) => {
         } else if (amountStr.includes("M")) {
           amount = parseFloat(amountStr.replace("M", "")) * 1000000;
         }
-        command = `economy give ${targetUsername} ${Math.floor(amount)}`;
+
+        // Validate amount
+        if (isNaN(amount) || amount <= 0 || amount > 1000000000000) {
+          throw new Error("Invalid amount format");
+        }
+
+        command = `economy give ${safeUsername} ${Math.floor(amount)}`;
         
         // Execute RCON command
         if (rconConnected && rcon) {
@@ -324,8 +363,9 @@ serve(async (req) => {
         deliverySuccess = true;
 
       } else if (order.product_type === "crate") {
-        // Broadcast purchase via say command
-        command = `say ${targetUsername} bought ${order.product_name}`;
+        // Sanitize product name for broadcast
+        const safeProductName = sanitizeForRCON(order.product_name.replace(/ /g, '_'));
+        command = `say ${safeUsername} bought ${safeProductName}`;
         
         // Execute RCON command
         if (rconConnected && rcon) {
@@ -391,7 +431,7 @@ serve(async (req) => {
         body: JSON.stringify({
           type: rconConnected ? "delivery" : "info",
           message: rconConnected 
-            ? `Delivered ${order.product_name} to ${targetUsername}` 
+            ? `Delivered ${order.product_name} to ${safeUsername}` 
             : `Order ${orderId} pending delivery - RCON not available`,
           order_id: order.id,
           metadata: { command, rconConnected },
