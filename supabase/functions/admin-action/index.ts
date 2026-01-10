@@ -1,9 +1,67 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { verify } from "https://deno.land/x/djwt@v2.8/mod.ts";
+import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// Validate Minecraft username: 3-16 characters, alphanumeric and underscore only
+function validateMinecraftUsername(username: string): boolean {
+  if (!username || typeof username !== 'string') return false;
+  return /^[a-zA-Z0-9_]{3,16}$/.test(username);
+}
+
+// Sanitize string for RCON command (remove any potentially dangerous characters)
+function sanitizeForRCON(input: string): string {
+  if (!input || typeof input !== 'string') return '';
+  // Only allow alphanumeric, underscore, and hyphen
+  return input.replace(/[^a-zA-Z0-9_-]/g, '');
+}
+
+// Validate and sanitize rank name
+function sanitizeRankName(rankName: string): string {
+  if (!rankName || typeof rankName !== 'string') return '';
+  // Remove " Rank" suffix and lowercase, then sanitize
+  return sanitizeForRCON(rankName.replace(/ Rank$/i, "").toLowerCase());
+}
+
+// Verify admin JWT token
+async function verifyAdminToken(authHeader: string | null): Promise<{ valid: boolean; payload?: any }> {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return { valid: false };
+  }
+
+  const jwtSecret = Deno.env.get("ADMIN_JWT_SECRET");
+  if (!jwtSecret) {
+    console.error("ADMIN_JWT_SECRET not configured");
+    return { valid: false };
+  }
+
+  try {
+    const token = authHeader.replace('Bearer ', '');
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(jwtSecret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign", "verify"]
+    );
+
+    const payload = await verify(token, key);
+    
+    if (payload.role !== 'admin') {
+      console.log("Token does not have admin role");
+      return { valid: false };
+    }
+
+    return { valid: true, payload };
+  } catch (err) {
+    console.error("Token verification failed:", err);
+    return { valid: false };
+  }
+}
 
 // RCON client for Minecraft server
 class RCONClient {
@@ -58,7 +116,6 @@ class RCONClient {
       console.log(`Connecting to RCON at ${this.host}:${this.port}`);
       this.conn = await Deno.connect({ hostname: this.host, port: this.port });
       
-      // Send auth packet (type 3)
       const authPacket = this.createPacket(++this.requestId, 3, this.password);
       await this.conn.write(authPacket);
       
@@ -98,15 +155,30 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Verify admin authentication for ALL requests
+  const authHeader = req.headers.get('authorization');
+  const { valid, payload } = await verifyAdminToken(authHeader);
+
+  if (!valid) {
+    console.log("Unauthorized admin action attempt");
+    return new Response(
+      JSON.stringify({ error: "Unauthorized - invalid or missing admin token" }),
+      { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
+    );
+  }
+
+  console.log("Admin action authenticated:", payload?.username);
+
   try {
     const { action, ...params } = await req.json();
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    console.log("Admin action:", action, params);
+    console.log("Admin action:", action, "by:", payload?.username);
 
     switch (action) {
       case "toggle_maintenance": {
+        const value = params.value === "true" ? "true" : "false";
         await fetch(`${supabaseUrl}/rest/v1/site_settings?key=eq.maintenance_mode`, {
           method: "PATCH",
           headers: {
@@ -115,10 +187,9 @@ serve(async (req) => {
             "Authorization": `Bearer ${supabaseKey}`,
             "Prefer": "return=minimal",
           },
-          body: JSON.stringify({ value: params.value }),
+          body: JSON.stringify({ value }),
         });
 
-        // Log admin action
         await fetch(`${supabaseUrl}/rest/v1/logs`, {
           method: "POST",
           headers: {
@@ -129,15 +200,14 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             type: "admin",
-            message: `Maintenance mode ${params.value === "true" ? "enabled" : "disabled"}`,
-            metadata: { action: "toggle_maintenance", value: params.value },
+            message: `Maintenance mode ${value === "true" ? "enabled" : "disabled"} by ${payload?.username}`,
+            metadata: { action: "toggle_maintenance", value, admin: payload?.username },
           }),
         });
         break;
       }
 
       case "retry_delivery": {
-        // Get order details
         const orderResponse = await fetch(
           `${supabaseUrl}/rest/v1/orders?id=eq.${params.orderId}&select=*`,
           {
@@ -151,11 +221,21 @@ serve(async (req) => {
         if (orders && orders.length > 0) {
           const order = orders[0];
           const targetUsername = order.gift_to || order.minecraft_username;
+          
+          // Validate username before using in RCON command
+          const safeUsername = sanitizeForRCON(targetUsername);
+          if (!safeUsername || safeUsername.length < 3 || safeUsername.length > 16) {
+            throw new Error("Invalid username format in order");
+          }
+
           let command = "";
 
           if (order.product_type === "rank") {
-            const rankName = order.product_name.replace(" Rank", "").toLowerCase();
-            command = `lp user ${targetUsername} parent addtemp ${rankName} 30d`;
+            const safeRankName = sanitizeRankName(order.product_name);
+            if (!safeRankName) {
+              throw new Error("Invalid rank name format");
+            }
+            command = `lp user ${safeUsername} parent addtemp ${safeRankName} 30d`;
           } else if (order.product_type === "money") {
             const amountStr = order.product_name.replace(" In-Game Money", "");
             let amount = 0;
@@ -164,12 +244,16 @@ serve(async (req) => {
             } else if (amountStr.includes("M")) {
               amount = parseFloat(amountStr.replace("M", "")) * 1000000;
             }
-            command = `economy give ${targetUsername} ${Math.floor(amount)}`;
+            // Validate amount is a reasonable positive number
+            if (isNaN(amount) || amount <= 0 || amount > 1000000000000) {
+              throw new Error("Invalid amount in order");
+            }
+            command = `economy give ${safeUsername} ${Math.floor(amount)}`;
           } else if (order.product_type === "crate") {
-            command = `say ${targetUsername} bought ${order.product_name}`;
+            const safeProductName = sanitizeForRCON(order.product_name.replace(/ /g, '_'));
+            command = `say ${safeUsername} bought ${safeProductName}`;
           }
 
-          // Try RCON delivery
           const rconHost = Deno.env.get("RCON_HOST");
           const rconPort = parseInt(Deno.env.get("RCON_PORT") || "25575");
           const rconPassword = Deno.env.get("RCON_PASSWORD");
@@ -193,7 +277,6 @@ serve(async (req) => {
             }
           }
 
-          // Update order
           await fetch(`${supabaseUrl}/rest/v1/orders?id=eq.${order.id}`, {
             method: "PATCH",
             headers: {
@@ -210,7 +293,6 @@ serve(async (req) => {
             }),
           });
 
-          // Log
           await fetch(`${supabaseUrl}/rest/v1/logs`, {
             method: "POST",
             headers: {
@@ -222,10 +304,10 @@ serve(async (req) => {
             body: JSON.stringify({
               type: rconSuccess ? "delivery" : "error",
               message: rconSuccess 
-                ? `Retry delivery successful for order ${order.order_id}` 
+                ? `Retry delivery successful for order ${order.order_id} by ${payload?.username}` 
                 : `Retry delivery failed for order ${order.order_id}`,
               order_id: order.id,
-              metadata: { command, rconSuccess, rconResult },
+              metadata: { command, rconSuccess, rconResult, admin: payload?.username },
             }),
           });
 
@@ -237,6 +319,18 @@ serve(async (req) => {
       }
 
       case "create_coupon": {
+        // Validate coupon data
+        const coupon = params.coupon;
+        if (!coupon || !coupon.code || typeof coupon.code !== 'string') {
+          throw new Error("Invalid coupon code");
+        }
+        if (!['flat', 'percentage'].includes(coupon.type)) {
+          throw new Error("Invalid coupon type");
+        }
+        if (typeof coupon.value !== 'number' || coupon.value < 0 || coupon.value > 10000) {
+          throw new Error("Invalid coupon value");
+        }
+
         await fetch(`${supabaseUrl}/rest/v1/coupons`, {
           method: "POST",
           headers: {
@@ -245,10 +339,14 @@ serve(async (req) => {
             "Authorization": `Bearer ${supabaseKey}`,
             "Prefer": "return=minimal",
           },
-          body: JSON.stringify(params.coupon),
+          body: JSON.stringify({
+            code: coupon.code.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 20),
+            type: coupon.type,
+            value: Math.floor(coupon.value),
+            max_uses: Math.min(Math.max(coupon.max_uses || 100, 1), 100000),
+          }),
         });
 
-        // Log
         await fetch(`${supabaseUrl}/rest/v1/logs`, {
           method: "POST",
           headers: {
@@ -259,14 +357,18 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             type: "admin",
-            message: `Coupon created: ${params.coupon.code}`,
-            metadata: params.coupon,
+            message: `Coupon created: ${coupon.code} by ${payload?.username}`,
+            metadata: { ...coupon, admin: payload?.username },
           }),
         });
         break;
       }
 
       case "delete_coupon": {
+        if (!params.couponId) {
+          throw new Error("Coupon ID required");
+        }
+
         await fetch(`${supabaseUrl}/rest/v1/coupons?id=eq.${params.couponId}`, {
           method: "DELETE",
           headers: {
@@ -275,7 +377,6 @@ serve(async (req) => {
           },
         });
 
-        // Log
         await fetch(`${supabaseUrl}/rest/v1/logs`, {
           method: "POST",
           headers: {
@@ -286,14 +387,32 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             type: "admin",
-            message: `Coupon deleted`,
-            metadata: { couponId: params.couponId },
+            message: `Coupon deleted by ${payload?.username}`,
+            metadata: { couponId: params.couponId, admin: payload?.username },
           }),
         });
         break;
       }
 
       case "update_coupon": {
+        if (!params.couponId || !params.updates) {
+          throw new Error("Coupon ID and updates required");
+        }
+
+        const updates: any = {};
+        if (params.updates.code) {
+          updates.code = params.updates.code.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 20);
+        }
+        if (params.updates.type && ['flat', 'percentage'].includes(params.updates.type)) {
+          updates.type = params.updates.type;
+        }
+        if (typeof params.updates.value === 'number') {
+          updates.value = Math.min(Math.max(Math.floor(params.updates.value), 0), 10000);
+        }
+        if (typeof params.updates.max_uses === 'number') {
+          updates.max_uses = Math.min(Math.max(Math.floor(params.updates.max_uses), 1), 100000);
+        }
+
         await fetch(`${supabaseUrl}/rest/v1/coupons?id=eq.${params.couponId}`, {
           method: "PATCH",
           headers: {
@@ -302,10 +421,9 @@ serve(async (req) => {
             "Authorization": `Bearer ${supabaseKey}`,
             "Prefer": "return=minimal",
           },
-          body: JSON.stringify(params.updates),
+          body: JSON.stringify(updates),
         });
 
-        // Log
         await fetch(`${supabaseUrl}/rest/v1/logs`, {
           method: "POST",
           headers: {
@@ -316,14 +434,18 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             type: "admin",
-            message: `Coupon updated: ${params.updates.code || params.couponId}`,
-            metadata: { couponId: params.couponId, updates: params.updates },
+            message: `Coupon updated by ${payload?.username}`,
+            metadata: { couponId: params.couponId, updates, admin: payload?.username },
           }),
         });
         break;
       }
 
       case "toggle_coupon_status": {
+        if (!params.couponId) {
+          throw new Error("Coupon ID required");
+        }
+
         await fetch(`${supabaseUrl}/rest/v1/coupons?id=eq.${params.couponId}`, {
           method: "PATCH",
           headers: {
@@ -332,10 +454,9 @@ serve(async (req) => {
             "Authorization": `Bearer ${supabaseKey}`,
             "Prefer": "return=minimal",
           },
-          body: JSON.stringify({ is_active: params.isActive }),
+          body: JSON.stringify({ is_active: !!params.isActive }),
         });
 
-        // Log
         await fetch(`${supabaseUrl}/rest/v1/logs`, {
           method: "POST",
           headers: {
@@ -346,15 +467,14 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             type: "admin",
-            message: `Coupon ${params.isActive ? 'activated' : 'deactivated'}`,
-            metadata: { couponId: params.couponId, isActive: params.isActive },
+            message: `Coupon ${params.isActive ? 'activated' : 'deactivated'} by ${payload?.username}`,
+            metadata: { couponId: params.couponId, isActive: params.isActive, admin: payload?.username },
           }),
         });
         break;
       }
 
       case "increment_coupon_usage": {
-        // Increment coupon uses_count
         const couponResponse = await fetch(
           `${supabaseUrl}/rest/v1/coupons?id=eq.${params.couponId}&select=uses_count`,
           {
@@ -382,13 +502,30 @@ serve(async (req) => {
       }
 
       case "clear_data": {
-        // Verify admin password - use the hardcoded admin credentials
-        // Since admin_users table is empty, we use the same credentials as admin-login
-        const ADMIN_USERNAME = "admin";
-        const ADMIN_PASSWORD = "axis2024admin";
+        // Verify admin password from database (not hardcoded)
+        if (!params.password) {
+          throw new Error("Password required");
+        }
+
+        // Fetch admin user to verify password
+        const adminResponse = await fetch(
+          `${supabaseUrl}/rest/v1/admin_users?id=eq.${payload?.sub}&select=password_hash`,
+          {
+            headers: {
+              "apikey": supabaseKey,
+              "Authorization": `Bearer ${supabaseKey}`,
+            },
+          }
+        );
+        const admins = await adminResponse.json();
         
-        if (params.username !== ADMIN_USERNAME || params.password !== ADMIN_PASSWORD) {
-          throw new Error("Invalid credentials");
+        if (!admins || admins.length === 0) {
+          throw new Error("Admin not found");
+        }
+
+        const isValidPassword = await bcrypt.compare(params.password, admins[0].password_hash);
+        if (!isValidPassword) {
+          throw new Error("Invalid password");
         }
 
         // Check if maintenance mode is enabled
@@ -436,7 +573,6 @@ serve(async (req) => {
           },
         });
 
-        // Log the clear action (new log after clearing)
         await fetch(`${supabaseUrl}/rest/v1/logs`, {
           method: "POST",
           headers: {
@@ -447,8 +583,8 @@ serve(async (req) => {
           },
           body: JSON.stringify({
             type: "admin",
-            message: "All data cleared by admin",
-            metadata: { action: "clear_data", timestamp: new Date().toISOString() },
+            message: `All data cleared by ${payload?.username}`,
+            metadata: { action: "clear_data", admin: payload?.username, timestamp: new Date().toISOString() },
           }),
         });
         break;

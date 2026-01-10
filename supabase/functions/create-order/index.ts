@@ -5,6 +5,33 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Validate Minecraft username: 3-16 characters, alphanumeric and underscore only
+function validateMinecraftUsername(username: string): boolean {
+  if (!username || typeof username !== 'string') return false;
+  return /^[a-zA-Z0-9_]{3,16}$/.test(username);
+}
+
+// Validate Discord username (basic validation)
+function validateDiscordUsername(username: string): boolean {
+  if (!username || typeof username !== 'string') return false;
+  // Discord usernames: 2-32 characters
+  return username.length >= 2 && username.length <= 32 && !/[<>@#:```]/.test(username);
+}
+
+// Sanitize string for safe storage
+function sanitizeInput(input: string, maxLength: number = 100): string {
+  if (!input || typeof input !== 'string') return '';
+  return input.trim().substring(0, maxLength);
+}
+
+// Validate email format
+function validateEmail(email: string): boolean {
+  if (!email) return true; // Email is optional
+  if (typeof email !== 'string') return false;
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email) && email.length <= 255;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -12,6 +39,51 @@ serve(async (req) => {
 
   try {
     const { productType, productId, productName, amount, minecraftUsername, discordUsername, giftTo, couponId, userId, userEmail } = await req.json();
+
+    // Input validation
+    if (!validateMinecraftUsername(minecraftUsername)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid Minecraft username. Must be 3-16 characters, alphanumeric and underscore only." }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    if (!validateDiscordUsername(discordUsername)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid Discord username format." }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    if (giftTo && !validateMinecraftUsername(giftTo)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid gift recipient username. Must be 3-16 characters, alphanumeric and underscore only." }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    if (userEmail && !validateEmail(userEmail)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid email format." }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Validate amount
+    if (typeof amount !== 'number' || amount <= 0 || amount > 1000000) {
+      return new Response(
+        JSON.stringify({ error: "Invalid amount." }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    // Validate product type
+    if (!['rank', 'crate', 'money'].includes(productType)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid product type." }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
 
     console.log("Creating order:", { productType, productId, productName, amount, minecraftUsername, couponId, userId });
 
@@ -29,12 +101,12 @@ serve(async (req) => {
         "Authorization": `Basic ${authHeader}`,
       },
       body: JSON.stringify({
-        amount: amount * 100,
+        amount: Math.floor(amount * 100),
         currency: "INR",
         receipt: orderId,
         notes: {
           product_type: productType,
-          product_id: productId,
+          product_id: sanitizeInput(productId, 50),
           minecraft_username: minecraftUsername,
         },
       }),
@@ -43,7 +115,7 @@ serve(async (req) => {
     if (!razorpayResponse.ok) {
       const errorText = await razorpayResponse.text();
       console.error("Razorpay error:", errorText);
-      throw new Error("Failed to create Razorpay order");
+      throw new Error("Failed to create payment order");
     }
 
     const razorpayOrder = await razorpayResponse.json();
@@ -63,16 +135,16 @@ serve(async (req) => {
       body: JSON.stringify({
         order_id: orderId,
         minecraft_username: minecraftUsername,
-        discord_username: discordUsername,
-        product_name: productName,
+        discord_username: sanitizeInput(discordUsername, 32),
+        product_name: sanitizeInput(productName, 100),
         product_type: productType,
-        amount: amount,
+        amount: Math.floor(amount),
         razorpay_order_id: razorpayOrder.id,
-        gift_to: giftTo,
+        gift_to: giftTo || null,
         payment_status: "pending",
         delivery_status: "pending",
         user_id: userId || null,
-        user_email: userEmail || null,
+        user_email: userEmail ? sanitizeInput(userEmail, 255) : null,
       }),
     });
 
@@ -115,8 +187,8 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         type: "info",
-        message: `Order created: ${orderId} for ${productName}`,
-        metadata: { orderId, productName, amount, minecraftUsername, couponId, userId },
+        message: `Order created: ${orderId} for ${sanitizeInput(productName, 50)}`,
+        metadata: { orderId, productName: sanitizeInput(productName, 50), amount, minecraftUsername, couponId: couponId || null, userId: userId || null },
       }),
     });
 
@@ -131,7 +203,7 @@ serve(async (req) => {
   } catch (error: any) {
     console.error("Create order error:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: "Failed to create order" }),
       { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   }

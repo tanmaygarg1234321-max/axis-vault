@@ -120,16 +120,44 @@ const Admin = () => {
     max_uses: 100,
   });
 
-  // Check auth on load
+  // Get admin token for API calls
+  const getAdminToken = () => sessionStorage.getItem("admin_token");
+
+  // Check auth on load - validate token exists
   useEffect(() => {
-    const authStatus = sessionStorage.getItem("admin_auth");
-    if (authStatus === "true") {
-      setIsAuthenticated(true);
-      fetchData();
+    const token = sessionStorage.getItem("admin_token");
+    if (token) {
+      // Basic token expiry check (JWT tokens have exp claim)
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        if (payload.exp && payload.exp * 1000 > Date.now()) {
+          setIsAuthenticated(true);
+          fetchData();
+        } else {
+          // Token expired
+          sessionStorage.removeItem("admin_token");
+          sessionStorage.removeItem("admin_username");
+        }
+      } catch {
+        // Invalid token format
+        sessionStorage.removeItem("admin_token");
+        sessionStorage.removeItem("admin_username");
+      }
     }
   }, []);
 
   const handleLogin = async () => {
+    if (!username.trim() || !password.trim()) {
+      toast.error("Please enter username and password");
+      return;
+    }
+
+    // Basic input validation
+    if (!/^[a-zA-Z0-9_]{3,50}$/.test(username)) {
+      toast.error("Invalid username format");
+      return;
+    }
+
     setLoginLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("admin-login", {
@@ -137,25 +165,28 @@ const Admin = () => {
       });
 
       if (error) throw error;
-      if (data.success) {
-        sessionStorage.setItem("admin_auth", "true");
+      if (data.success && data.token) {
+        sessionStorage.setItem("admin_token", data.token);
         sessionStorage.setItem("admin_username", username);
         setIsAuthenticated(true);
+        setPassword(""); // Clear password from state
         fetchData();
         toast.success("Login successful");
       } else {
-        toast.error("Invalid credentials");
+        toast.error(data.error || "Invalid credentials");
       }
     } catch (err: any) {
-      toast.error(err.message || "Login failed");
+      toast.error("Login failed");
     }
     setLoginLoading(false);
   };
 
   const handleLogout = () => {
-    sessionStorage.removeItem("admin_auth");
+    sessionStorage.removeItem("admin_token");
     sessionStorage.removeItem("admin_username");
     setIsAuthenticated(false);
+    setUsername("");
+    setPassword("");
   };
 
   const fetchData = async () => {
@@ -221,19 +252,25 @@ const Admin = () => {
 
   const toggleMaintenance = async () => {
     const newValue = settings.maintenance_mode === "true" ? "false" : "true";
+    const token = getAdminToken();
     const { error } = await supabase.functions.invoke("admin-action", {
+      headers: { Authorization: `Bearer ${token}` },
       body: { action: "toggle_maintenance", value: newValue },
     });
     if (!error) {
       setSettings({ ...settings, maintenance_mode: newValue });
       toast.success(`Maintenance mode ${newValue === "true" ? "enabled" : "disabled"}`);
+    } else {
+      toast.error("Failed to toggle maintenance mode");
     }
   };
 
   const retryDelivery = async (orderId: string) => {
     setRetryingOrder(orderId);
     try {
+      const token = getAdminToken();
       const { error } = await supabase.functions.invoke("admin-action", {
+        headers: { Authorization: `Bearer ${token}` },
         body: { action: "retry_delivery", orderId },
       });
       if (error) throw error;
@@ -250,7 +287,9 @@ const Admin = () => {
       toast.error("Please enter a coupon code");
       return;
     }
+    const token = getAdminToken();
     const { error } = await supabase.functions.invoke("admin-action", {
+      headers: { Authorization: `Bearer ${token}` },
       body: {
         action: "create_coupon",
         coupon: {
@@ -271,7 +310,9 @@ const Admin = () => {
   };
 
   const deleteCoupon = async (couponId: string) => {
+    const token = getAdminToken();
     const { error } = await supabase.functions.invoke("admin-action", {
+      headers: { Authorization: `Bearer ${token}` },
       body: { action: "delete_coupon", couponId },
     });
     if (!error) {
@@ -291,7 +332,9 @@ const Admin = () => {
   };
 
   const saveEditCoupon = async (couponId: string) => {
+    const token = getAdminToken();
     const { error } = await supabase.functions.invoke("admin-action", {
+      headers: { Authorization: `Bearer ${token}` },
       body: { 
         action: "update_coupon", 
         couponId,
@@ -313,7 +356,9 @@ const Admin = () => {
   };
 
   const toggleCouponStatus = async (couponId: string, currentStatus: boolean) => {
+    const token = getAdminToken();
     const { error } = await supabase.functions.invoke("admin-action", {
+      headers: { Authorization: `Bearer ${token}` },
       body: { 
         action: "toggle_coupon_status", 
         couponId,
@@ -339,11 +384,11 @@ const Admin = () => {
 
     setClearLoading(true);
     try {
-      const adminUsername = sessionStorage.getItem("admin_username") || "admin";
+      const token = getAdminToken();
       const { error } = await supabase.functions.invoke("admin-action", {
+        headers: { Authorization: `Bearer ${token}` },
         body: { 
           action: "clear_data", 
-          username: adminUsername,
           password: clearPassword 
         },
       });
