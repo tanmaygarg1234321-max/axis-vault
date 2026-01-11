@@ -1,6 +1,53 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { verify } from "https://deno.land/x/djwt@v2.8/mod.ts";
-import * as bcrypt from "https://deno.land/x/bcrypt@v0.4.1/mod.ts";
+import { encode as base64Encode } from "https://deno.land/std@0.190.0/encoding/base64.ts";
+
+// PBKDF2 password verification (compatible with admin-login)
+async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+  try {
+    // Handle INITIAL_SETUP case
+    if (storedHash === 'INITIAL_SETUP') {
+      return password === 'TempAdmin2024!Change';
+    }
+    
+    // Parse stored hash: pbkdf2:salt:hash
+    const parts = storedHash.split(':');
+    if (parts.length !== 3 || parts[0] !== 'pbkdf2') {
+      return false;
+    }
+    
+    const salt = parts[1];
+    const expectedHash = parts[2];
+    
+    // Derive key using same parameters
+    const encoder = new TextEncoder();
+    const keyMaterial = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(password),
+      "PBKDF2",
+      false,
+      ["deriveBits"]
+    );
+    
+    const derivedBits = await crypto.subtle.deriveBits(
+      {
+        name: "PBKDF2",
+        salt: encoder.encode(salt),
+        iterations: 100000,
+        hash: "SHA-256"
+      },
+      keyMaterial,
+      256
+    );
+    
+    const derivedArray = new Uint8Array(derivedBits);
+    const derivedHash = base64Encode(derivedArray.buffer);
+    return derivedHash === expectedHash;
+  } catch (error) {
+    console.error("Password verification error:", error);
+    return false;
+  }
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -523,7 +570,7 @@ serve(async (req) => {
           throw new Error("Admin not found");
         }
 
-        const isValidPassword = await bcrypt.compare(params.password, admins[0].password_hash);
+        const isValidPassword = await verifyPassword(params.password, admins[0].password_hash);
         if (!isValidPassword) {
           throw new Error("Invalid password");
         }
