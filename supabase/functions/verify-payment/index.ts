@@ -381,9 +381,25 @@ serve(async (req) => {
         deliverySuccess = true;
 
       } else if (order.product_type === "crate") {
-        // Sanitize product name for broadcast
-        const safeProductName = sanitizeForRCON(order.product_name.replace(/ /g, '_'));
-        command = `say ${safeUsername} bought ${safeProductName}`;
+        // Map product name to crate command name
+        const crateNameMap: Record<string, string> = {
+          "astix crate": "astix",
+          "void crate": "void",
+          "spawner crate": "spawner",
+          "money crate": "money",
+          "keyall crate": "keyall",
+          "mythic crate": "mythic",
+        };
+        
+        const productLower = order.product_name.toLowerCase();
+        const crateName = crateNameMap[productLower] || sanitizeForRCON(order.product_name.replace(/ Crate$/i, "").toLowerCase());
+        
+        if (!crateName) {
+          throw new Error("Invalid crate name format");
+        }
+        
+        // Use the crates key give command format
+        command = `crates key give ${crateName} ${safeUsername} 1`;
         
         // Execute RCON command
         if (rconConnected && rcon) {
