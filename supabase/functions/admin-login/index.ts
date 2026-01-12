@@ -3,23 +3,32 @@ import { create, getNumericDate } from "https://deno.land/x/djwt@v2.8/mod.ts";
 
 // CORS configuration with origin validation
 const ALLOWED_ORIGINS = [
-  'https://preview--jeqsesqlkjklhyvszpgg.lovable.app',
-  'https://jeqsesqlkjklhyvszpgg.lovable.app',
-  'http://localhost:5173',
-  'http://localhost:8080',
+  "https://preview--jeqsesqlkjklhyvszpgg.lovable.app",
+  "https://jeqsesqlkjklhyvszpgg.lovable.app",
+  "http://localhost:5173",
+  "http://localhost:8080",
 ];
 
 function getCorsHeaders(origin: string | null): Record<string, string> {
-  const isAllowed = origin && ALLOWED_ORIGINS.some(allowed => 
-    origin === allowed || origin.endsWith('.lovable.app')
-  );
-  
+  const isAllowed =
+    origin &&
+    ALLOWED_ORIGINS.some(
+      (allowed) =>
+        origin === allowed ||
+        origin.endsWith(".lovable.app") ||
+        origin.endsWith(".lovableproject.com") ||
+        origin.endsWith(".lovable.dev")
+    );
+
   return {
-    'Access-Control-Allow-Origin': isAllowed ? origin! : ALLOWED_ORIGINS[0],
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Credentials': 'true',
+    "Access-Control-Allow-Origin": isAllowed ? origin! : ALLOWED_ORIGINS[0],
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Credentials": "true",
+    Vary: "Origin",
   };
 }
+
 
 // PBKDF2-based password hashing (Web Crypto API - works in Edge Runtime)
 const PBKDF2_ITERATIONS = 100000;
