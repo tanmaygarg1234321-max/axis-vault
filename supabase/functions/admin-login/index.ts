@@ -1,10 +1,25 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { create, getNumericDate } from "https://deno.land/x/djwt@v2.8/mod.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+// CORS configuration with origin validation
+const ALLOWED_ORIGINS = [
+  'https://preview--jeqsesqlkjklhyvszpgg.lovable.app',
+  'https://jeqsesqlkjklhyvszpgg.lovable.app',
+  'http://localhost:5173',
+  'http://localhost:8080',
+];
+
+function getCorsHeaders(origin: string | null): Record<string, string> {
+  const isAllowed = origin && ALLOWED_ORIGINS.some(allowed => 
+    origin === allowed || origin.endsWith('.lovable.app')
+  );
+  
+  return {
+    'Access-Control-Allow-Origin': isAllowed ? origin! : ALLOWED_ORIGINS[0],
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Credentials': 'true',
+  };
+}
 
 // PBKDF2-based password hashing (Web Crypto API - works in Edge Runtime)
 const PBKDF2_ITERATIONS = 100000;
@@ -172,9 +187,17 @@ function validateStrongPassword(password: string): { valid: boolean; error?: str
 }
 
 serve(async (req) => {
+  const origin = req.headers.get('origin');
+  const corsHeaders = getCorsHeaders(origin);
+  
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // Get client IP for rate limiting
+  const clientIP = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 
+                   req.headers.get('cf-connecting-ip') || 
+                   'unknown';
 
   try {
     const body = await req.json();
@@ -358,6 +381,29 @@ serve(async (req) => {
 
     console.log("Admin login attempt:", username);
 
+    // Check rate limiting before proceeding
+    const rateLimitResponse = await fetch(
+      `${supabaseUrl}/rest/v1/rpc/check_login_allowed`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": supabaseKey,
+          "Authorization": `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify({ p_username: username, p_ip: clientIP }),
+      }
+    );
+    
+    const isAllowed = await rateLimitResponse.json();
+    if (!isAllowed) {
+      console.log(`Rate limit exceeded for ${username} from ${clientIP}`);
+      return new Response(
+        JSON.stringify({ success: false, error: "Too many failed attempts. Please try again in 15 minutes." }),
+        { status: 429, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
     // Fetch admin user from database using parameterized query
     const response = await fetch(
       `${supabaseUrl}/rest/v1/admin_users?username=eq.${encodeURIComponent(username)}&select=id,username,password_hash,must_change_password`,
@@ -373,6 +419,16 @@ serve(async (req) => {
     
     if (!users || users.length === 0) {
       console.log("Admin login failed - user not found");
+      // Log failed attempt
+      await fetch(`${supabaseUrl}/rest/v1/rpc/log_login_attempt`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": supabaseKey,
+          "Authorization": `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify({ p_username: username, p_ip: clientIP, p_success: false }),
+      });
       // Simulate password check to prevent timing attacks
       await hashPassword("dummy_password_to_prevent_timing_attacks");
       return new Response(
@@ -388,11 +444,32 @@ serve(async (req) => {
 
     if (!isValid) {
       console.log("Admin login failed - invalid password");
+      // Log failed attempt
+      await fetch(`${supabaseUrl}/rest/v1/rpc/log_login_attempt`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": supabaseKey,
+          "Authorization": `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify({ p_username: username, p_ip: clientIP, p_success: false }),
+      });
       return new Response(
         JSON.stringify({ success: false, error: "Invalid credentials" }),
         { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
+
+    // Log successful attempt
+    await fetch(`${supabaseUrl}/rest/v1/rpc/log_login_attempt`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": supabaseKey,
+        "Authorization": `Bearer ${supabaseKey}`,
+      },
+      body: JSON.stringify({ p_username: username, p_ip: clientIP, p_success: true }),
+    });
 
     console.log("Admin login successful");
 
