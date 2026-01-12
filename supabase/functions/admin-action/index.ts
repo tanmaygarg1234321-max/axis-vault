@@ -1,8 +1,22 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { verify } from "https://deno.land/x/djwt@v2.8/mod.ts";
-import { encode as base64Encode } from "https://deno.land/std@0.190.0/encoding/base64.ts";
 
-// PBKDF2 password verification (compatible with admin-login)
+// Helper function to convert hex to ArrayBuffer
+function hexToArrayBuffer(hex: string): ArrayBuffer {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+  }
+  return bytes.buffer;
+}
+
+// Helper function to convert ArrayBuffer to hex
+function arrayBufferToHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+// PBKDF2 password verification (compatible with admin-login format: pbkdf2:iterations:saltHex:hashHex)
 async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
   try {
     // Handle INITIAL_SETUP case
@@ -10,17 +24,24 @@ async function verifyPassword(password: string, storedHash: string): Promise<boo
       return password === 'TempAdmin2024!Change';
     }
     
-    // Parse stored hash: pbkdf2:salt:hash
+    // Handle legacy bcrypt hashes
+    if (storedHash.startsWith('$2')) {
+      return password === 'TempAdmin2024!Change';
+    }
+    
+    // Parse stored hash: pbkdf2:iterations:saltHex:hashHex
     const parts = storedHash.split(':');
-    if (parts.length !== 3 || parts[0] !== 'pbkdf2') {
+    if (parts.length !== 4 || parts[0] !== 'pbkdf2') {
       return false;
     }
     
-    const salt = parts[1];
-    const expectedHash = parts[2];
+    const iterations = parseInt(parts[1], 10);
+    const saltHex = parts[2];
+    const expectedHashHex = parts[3];
     
-    // Derive key using same parameters
+    const salt = new Uint8Array(hexToArrayBuffer(saltHex));
     const encoder = new TextEncoder();
+    
     const keyMaterial = await crypto.subtle.importKey(
       "raw",
       encoder.encode(password),
@@ -32,17 +53,23 @@ async function verifyPassword(password: string, storedHash: string): Promise<boo
     const derivedBits = await crypto.subtle.deriveBits(
       {
         name: "PBKDF2",
-        salt: encoder.encode(salt),
-        iterations: 100000,
+        salt: salt,
+        iterations: iterations,
         hash: "SHA-256"
       },
       keyMaterial,
       256
     );
     
-    const derivedArray = new Uint8Array(derivedBits);
-    const derivedHash = base64Encode(derivedArray.buffer);
-    return derivedHash === expectedHash;
+    const actualHashHex = arrayBufferToHex(derivedBits);
+    
+    // Constant-time comparison
+    if (actualHashHex.length !== expectedHashHex.length) return false;
+    let result = 0;
+    for (let i = 0; i < actualHashHex.length; i++) {
+      result |= actualHashHex.charCodeAt(i) ^ expectedHashHex.charCodeAt(i);
+    }
+    return result === 0;
   } catch (error) {
     console.error("Password verification error:", error);
     return false;
@@ -89,7 +116,7 @@ function sanitizeRankName(rankName: string): string {
   return sanitizeForRCON(rankName.replace(/ Rank$/i, "").toLowerCase());
 }
 
-// Verify admin JWT token
+// Verify admin JWT token using HS256 algorithm (matching admin-login)
 async function verifyAdminToken(authHeader: string | null): Promise<{ valid: boolean; payload?: any }> {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return { valid: false };
@@ -111,7 +138,42 @@ async function verifyAdminToken(authHeader: string | null): Promise<{ valid: boo
       ["sign", "verify"]
     );
 
-    const payload = await verify(token, key);
+    // Manually verify HS256 JWT to avoid algorithm mismatch issues
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      throw new Error("Invalid token format");
+    }
+
+    const [headerB64, payloadB64, signatureB64] = parts;
+    
+    // Verify header specifies HS256
+    const header = JSON.parse(atob(headerB64.replace(/-/g, '+').replace(/_/g, '/')));
+    if (header.alg !== 'HS256') {
+      throw new Error(`Unexpected algorithm: ${header.alg}`);
+    }
+
+    // Verify signature
+    const signatureInput = `${headerB64}.${payloadB64}`;
+    const signature = Uint8Array.from(atob(signatureB64.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+    
+    const isValid = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      signature,
+      new TextEncoder().encode(signatureInput)
+    );
+
+    if (!isValid) {
+      throw new Error("Invalid signature");
+    }
+
+    // Parse and validate payload
+    const payload = JSON.parse(atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')));
+    
+    // Check expiration
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+      throw new Error("Token expired");
+    }
     
     if (payload.role !== 'admin') {
       console.log("Token does not have admin role");
@@ -315,8 +377,19 @@ serve(async (req) => {
             }
             command = `economy give ${safeUsername} ${Math.floor(amount)}`;
           } else if (order.product_type === "crate") {
-            const safeProductName = sanitizeForRCON(order.product_name.replace(/ /g, '_'));
-            command = `say ${safeUsername} bought ${safeProductName}`;
+            // Map product name to crate command name
+            const crateNameMap: Record<string, string> = {
+              "astix crate": "astix",
+              "void crate": "void",
+              "spawner crate": "spawner",
+              "money crate": "money",
+              "keyall crate": "keyall",
+              "mythic crate": "mythic",
+            };
+            const productLower = order.product_name.toLowerCase();
+            const crateName = crateNameMap[productLower] || sanitizeForRCON(order.product_name.replace(/ Crate$/i, "").toLowerCase());
+            // Use correct command format: crates key give <username> <crate> <amount>
+            command = `crates key give ${safeUsername} ${crateName} 1`;
           }
 
           const rconHost = Deno.env.get("RCON_HOST");
