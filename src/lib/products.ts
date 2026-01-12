@@ -114,9 +114,10 @@ export const crates: Crate[] = [
     id: "astix-crate",
     name: "Astix Crate",
     price: 210,
-    description: "Ultimate tier rewards including legendary gear, rare enchants, and exclusive cosmetics",
+    description:
+      "Ultimate tier rewards including legendary gear, rare enchants, and exclusive cosmetics",
     color: "from-yellow-400 to-amber-600",
-    command: "astix"
+    command: "astix",
   },
   {
     id: "void-crate",
@@ -124,15 +125,24 @@ export const crates: Crate[] = [
     price: 155,
     description: "High-tier loot with powerful enchantments and rare materials",
     color: "from-indigo-600 to-purple-800",
-    command: "void"
+    command: "void",
+  },
+  {
+    id: "mythic-crate",
+    name: "Mythic Crate",
+    price: 95,
+    description: "Mid-tier rewards with rare enchants, gear and cosmetics",
+    color: "from-purple-500 to-violet-600",
+    command: "mythic",
   },
   {
     id: "spawner-crate",
     name: "Spawner Crate",
     price: 365,
-    description: "Random spawner drops including rare mob types and custom spawners",
+    description:
+      "Random spawner drops including rare mob types and custom spawners",
     color: "from-red-500 to-orange-600",
-    command: "spawner"
+    command: "spawner",
   },
   {
     id: "money-crate",
@@ -140,7 +150,7 @@ export const crates: Crate[] = [
     price: 465,
     description: "Guaranteed in-game currency rewards ranging from 100K to 10M",
     color: "from-green-500 to-emerald-600",
-    command: "money"
+    command: "money",
   },
   {
     id: "keyall-crate",
@@ -148,9 +158,10 @@ export const crates: Crate[] = [
     price: 90,
     description: "A bundle of random keys for all crate types on the server",
     color: "from-cyan-500 to-blue-500",
-    command: "keyall"
-  }
+    command: "keyall",
+  },
 ];
+
 
 export const moneyPackages: MoneyPackage[] = [
   { id: "1m", amount: "1M", amountInt: 1000000, price: 32 },

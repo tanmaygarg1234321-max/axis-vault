@@ -134,25 +134,41 @@ const Admin = () => {
   // Check auth on load - validate token exists
   useEffect(() => {
     const token = sessionStorage.getItem("admin_token");
-    if (token) {
-      // Basic token expiry check (JWT tokens have exp claim)
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        if (payload.exp && payload.exp * 1000 > Date.now()) {
-          setIsAuthenticated(true);
-          fetchData();
-        } else {
-          // Token expired
-          sessionStorage.removeItem("admin_token");
-          sessionStorage.removeItem("admin_username");
-        }
-      } catch {
-        // Invalid token format
+    if (!token) return;
+
+    const b64UrlToB64 = (str: string) => {
+      const base64 = str.replace(/-/g, "+").replace(/_/g, "/");
+      return base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    };
+
+    try {
+      const [headerPart, payloadPart] = token.split(".");
+      if (!headerPart || !payloadPart) throw new Error("Invalid token format");
+
+      const header = JSON.parse(atob(b64UrlToB64(headerPart)));
+      // Force re-login if user has an old token from a previous signing algorithm
+      if (header?.alg !== "HS256") {
+        sessionStorage.removeItem("admin_token");
+        sessionStorage.removeItem("admin_username");
+        return;
+      }
+
+      const payload = JSON.parse(atob(b64UrlToB64(payloadPart)));
+      if (payload.exp && payload.exp * 1000 > Date.now()) {
+        setIsAuthenticated(true);
+        fetchData();
+      } else {
+        // Token expired
         sessionStorage.removeItem("admin_token");
         sessionStorage.removeItem("admin_username");
       }
+    } catch {
+      // Invalid token format
+      sessionStorage.removeItem("admin_token");
+      sessionStorage.removeItem("admin_username");
     }
   }, []);
+
 
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
