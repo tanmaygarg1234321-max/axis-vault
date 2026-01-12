@@ -118,6 +118,30 @@ export type Database = {
         }
         Relationships: []
       }
+      login_attempts: {
+        Row: {
+          created_at: string | null
+          id: string
+          ip_address: string
+          success: boolean | null
+          username: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          ip_address: string
+          success?: boolean | null
+          username: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          ip_address?: string
+          success?: boolean | null
+          username?: string
+        }
+        Relationships: []
+      }
       logs: {
         Row: {
           created_at: string
@@ -272,6 +296,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      check_login_allowed: {
+        Args: { p_ip: string; p_username: string }
+        Returns: boolean
+      }
+      cleanup_old_login_attempts: { Args: never; Returns: undefined }
+      log_login_attempt: {
+        Args: { p_ip: string; p_success: boolean; p_username: string }
+        Returns: undefined
+      }
       lookup_order_by_order_id: {
         Args: { p_order_id: string }
         Returns: {
