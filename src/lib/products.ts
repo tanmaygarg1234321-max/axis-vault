@@ -14,6 +14,7 @@ export interface Crate {
   price: number;
   description: string;
   color: string;
+  command: string;
 }
 
 export interface MoneyPackage {
@@ -114,35 +115,40 @@ export const crates: Crate[] = [
     name: "Astix Crate",
     price: 210,
     description: "Ultimate tier rewards including legendary gear, rare enchants, and exclusive cosmetics",
-    color: "from-yellow-400 to-amber-600"
+    color: "from-yellow-400 to-amber-600",
+    command: "astix"
   },
   {
     id: "void-crate",
     name: "Void Crate",
     price: 155,
     description: "High-tier loot with powerful enchantments and rare materials",
-    color: "from-indigo-600 to-purple-800"
+    color: "from-indigo-600 to-purple-800",
+    command: "void"
   },
   {
     id: "spawner-crate",
     name: "Spawner Crate",
     price: 365,
     description: "Random spawner drops including rare mob types and custom spawners",
-    color: "from-red-500 to-orange-600"
+    color: "from-red-500 to-orange-600",
+    command: "spawner"
   },
   {
     id: "money-crate",
     name: "Money Crate",
     price: 465,
     description: "Guaranteed in-game currency rewards ranging from 100K to 10M",
-    color: "from-green-500 to-emerald-600"
+    color: "from-green-500 to-emerald-600",
+    command: "money"
   },
   {
     id: "keyall-crate",
     name: "Keyall Crate",
     price: 90,
     description: "A bundle of random keys for all crate types on the server",
-    color: "from-cyan-500 to-blue-500"
+    color: "from-cyan-500 to-blue-500",
+    command: "keyall"
   }
 ];
 
