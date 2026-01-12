@@ -398,8 +398,8 @@ serve(async (req) => {
           throw new Error("Invalid crate name format");
         }
         
-        // Use the crates key give command format
-        command = `crates key give ${crateName} ${safeUsername} 1`;
+        // Use the crates key give command format: crates key give <username> <crate> <amount>
+        command = `crates key give ${safeUsername} ${crateName} 1`;
         
         // Execute RCON command
         if (rconConnected && rcon) {
