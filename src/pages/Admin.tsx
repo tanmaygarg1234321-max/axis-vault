@@ -287,60 +287,59 @@ const Admin = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Fetch orders
-      const { data: ordersData } = await supabase
-        .from("orders")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(500);
+      const token = getAdminToken();
+      if (!token) {
+        toast.error("Session expired. Please log in again.");
+        handleLogout();
+        return;
+      }
+
+      // Fetch all admin data through edge function (bypasses RLS properly)
+      const { data: response, error } = await supabase.functions.invoke("admin-data", {
+        headers: { Authorization: `Bearer ${token}` },
+        body: { dataType: "all" },
+      });
+
+      if (error) throw error;
+      if (!response?.success) throw new Error(response?.error || "Failed to fetch data");
+
+      const { orders: ordersData, logs: logsData, coupons: couponsData, settings: settingsData } = response.data;
+
       setOrders(ordersData || []);
 
       // Calculate stats
       const today = new Date().toISOString().split("T")[0];
       const todayOrders = (ordersData || []).filter(
-        (o) => o.created_at.startsWith(today)
+        (o: any) => o.created_at.startsWith(today)
       );
-      const paidOrders = (ordersData || []).filter((o) => o.payment_status === "paid" || o.payment_status === "delivered");
+      const paidOrders = (ordersData || []).filter((o: any) => o.payment_status === "paid" || o.payment_status === "delivered");
       
       setStats({
         ordersToday: todayOrders.length,
         revenueToday: todayOrders
-          .filter((o) => o.payment_status === "paid" || o.payment_status === "delivered")
-          .reduce((acc, o) => acc + o.amount, 0),
-        totalRevenue: paidOrders.reduce((acc, o) => acc + o.amount, 0),
-        successful: (ordersData || []).filter((o) => o.payment_status === "delivered").length,
-        failed: (ordersData || []).filter((o) => o.payment_status === "failed").length,
-        pending: (ordersData || []).filter((o) => o.delivery_status === "pending" && (o.payment_status === "paid" || o.payment_status === "delivered")).length,
+          .filter((o: any) => o.payment_status === "paid" || o.payment_status === "delivered")
+          .reduce((acc: number, o: any) => acc + o.amount, 0),
+        totalRevenue: paidOrders.reduce((acc: number, o: any) => acc + o.amount, 0),
+        successful: (ordersData || []).filter((o: any) => o.payment_status === "delivered").length,
+        failed: (ordersData || []).filter((o: any) => o.payment_status === "failed").length,
+        pending: (ordersData || []).filter((o: any) => o.delivery_status === "pending" && (o.payment_status === "paid" || o.payment_status === "delivered")).length,
         totalOrders: (ordersData || []).length,
       });
 
-      // Fetch coupons
-      const { data: couponsData } = await supabase
-        .from("coupons")
-        .select("*")
-        .order("created_at", { ascending: false });
       setCoupons(couponsData || []);
-
-      // Fetch logs
-      const { data: logsData } = await supabase
-        .from("logs")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(500);
       setLogs(logsData || []);
 
-      // Fetch settings
-      const { data: settingsData } = await supabase.from("site_settings").select("*");
+      // Process settings
       const settingsObj: any = {};
-      (settingsData || []).forEach((s) => {
+      (settingsData || []).forEach((s: any) => {
         settingsObj[s.key] = s.value;
       });
       setSettings(settingsObj);
       
       toast.success("Data refreshed");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Fetch error:", err);
-      toast.error("Failed to fetch data");
+      toast.error(err?.message || "Failed to fetch data");
     }
     setLoading(false);
   };

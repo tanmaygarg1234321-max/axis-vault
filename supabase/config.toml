@@ -3,6 +3,9 @@ project_id = "jeqsesqlkjklhyvszpgg"
 [functions.admin-action]
 verify_jwt = false
 
+[functions.admin-data]
+verify_jwt = false
+
 [functions.admin-login]
 verify_jwt = false
 
