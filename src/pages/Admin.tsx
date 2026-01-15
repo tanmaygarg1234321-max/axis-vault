@@ -92,6 +92,7 @@ const Admin = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [settings, setSettings] = useState<any>({});
   const [loading, setLoading] = useState(false);
+  const [maintenanceToggling, setMaintenanceToggling] = useState(false);
   const [logFilter, setLogFilter] = useState("all");
   const [orderSearch, setOrderSearch] = useState("");
   const [retryingOrder, setRetryingOrder] = useState<string | null>(null);
@@ -344,18 +345,32 @@ const Admin = () => {
     setLoading(false);
   };
 
-  const toggleMaintenance = async () => {
-    const newValue = settings.maintenance_mode === "true" ? "false" : "true";
+  const toggleMaintenance = async (checked: boolean) => {
+    const newValue = checked ? "true" : "false";
     const token = getAdminToken();
-    const { error } = await supabase.functions.invoke("admin-action", {
-      headers: { Authorization: `Bearer ${token}` },
-      body: { action: "toggle_maintenance", value: newValue },
-    });
-    if (!error) {
-      setSettings({ ...settings, maintenance_mode: newValue });
-      toast.success(`Maintenance mode ${newValue === "true" ? "enabled" : "disabled"}`);
-    } else {
-      toast.error("Failed to toggle maintenance mode");
+
+    if (!token) {
+      toast.error("Session expired. Please log in again.");
+      return;
+    }
+
+    setMaintenanceToggling(true);
+    try {
+      const { error } = await supabase.functions.invoke("admin-action", {
+        headers: { Authorization: `Bearer ${token}` },
+        body: { action: "toggle_maintenance", value: newValue },
+      });
+
+      if (error) throw error;
+
+      setSettings((prev: any) => ({ ...prev, maintenance_mode: newValue }));
+      toast.success(
+        `Maintenance mode ${newValue === "true" ? "enabled" : "disabled"}`
+      );
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to toggle maintenance mode");
+    } finally {
+      setMaintenanceToggling(false);
     }
   };
 
@@ -1515,6 +1530,7 @@ const Admin = () => {
                     <Switch
                       checked={settings.maintenance_mode === "true"}
                       onCheckedChange={toggleMaintenance}
+                      disabled={maintenanceToggling}
                     />
                   </CardContent>
                 </Card>

@@ -33,6 +33,9 @@ const Footer = () => {
               <Link to="/store" className="text-muted-foreground hover:text-primary transition-colors text-sm">
                 Store
               </Link>
+              <Link to="/contact" className="text-muted-foreground hover:text-primary transition-colors text-sm">
+                Contact Us
+              </Link>
               <Link to="/terms" className="text-muted-foreground hover:text-primary transition-colors text-sm">
                 Terms & Refund Policy
               </Link>
@@ -75,14 +78,21 @@ const Footer = () => {
                 className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors text-sm"
               >
                 <FileText className="w-4 h-4" />
-                Terms of Service
+                Terms & Refunds
               </Link>
               <Link
-                to="/terms"
+                to="/shipping-policy"
                 className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors text-sm"
               >
                 <FileText className="w-4 h-4" />
-                Refund Policy
+                Shipping Policy
+              </Link>
+              <Link
+                to="/privacy-policy"
+                className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors text-sm"
+              >
+                <FileText className="w-4 h-4" />
+                Privacy Policy
               </Link>
             </div>
           </div>
