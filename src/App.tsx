@@ -11,6 +11,9 @@ import Store from "./pages/Store";
 import Checkout from "./pages/Checkout";
 import PaymentStatus from "./pages/PaymentStatus";
 import Terms from "./pages/Terms";
+import ContactUs from "./pages/ContactUs";
+import ShippingPolicy from "./pages/ShippingPolicy";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
 import Maintenance from "./pages/Maintenance";
 import Admin from "./pages/Admin";
 import Auth from "./pages/Auth";
@@ -100,11 +103,11 @@ const AppRoutes = () => (
       <Route path="/checkout" element={<Checkout />} />
       <Route path="/payment-status" element={<PaymentStatus />} />
       <Route path="/terms" element={<Terms />} />
+      <Route path="/contact" element={<ContactUs />} />
+      <Route path="/shipping-policy" element={<ShippingPolicy />} />
+      <Route path="/privacy-policy" element={<PrivacyPolicy />} />
       <Route path="/maintenance" element={<Maintenance />} />
       <Route path="/admin" element={<Admin />} />
-      <Route path="/auth" element={<Auth />} />
-      <Route path="/purchases" element={<PurchaseHistory />} />
-      <Route path="*" element={<NotFound />} />
     </Routes>
   </MaintenanceGate>
 );

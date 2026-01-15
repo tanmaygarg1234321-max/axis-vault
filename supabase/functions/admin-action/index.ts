@@ -99,6 +99,7 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
     "Access-Control-Allow-Origin": isAllowed ? origin! : ALLOWED_ORIGINS[0],
     "Access-Control-Allow-Headers":
       "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Credentials": "true",
     Vary: "Origin",
   };
@@ -126,8 +127,10 @@ function sanitizeRankName(rankName: string): string {
 }
 
 // Verify admin JWT token using HS256 algorithm (matching admin-login)
-async function verifyAdminToken(authHeader: string | null): Promise<{ valid: boolean; payload?: any }> {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+async function verifyAdminToken(
+  authHeader: string | null
+): Promise<{ valid: boolean; payload?: any }> {
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
     return { valid: false };
   }
 
@@ -137,34 +140,50 @@ async function verifyAdminToken(authHeader: string | null): Promise<{ valid: boo
     return { valid: false };
   }
 
+  const b64UrlToB64 = (str: string) => {
+    const base64 = str.replace(/-/g, "+").replace(/_/g, "/");
+    return base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+  };
+
+  const b64UrlToString = (str: string) => atob(b64UrlToB64(str));
+
+  const b64UrlToUint8Array = (str: string) =>
+    Uint8Array.from(b64UrlToString(str), (c) => c.charCodeAt(0));
+
   try {
-    const token = authHeader.replace('Bearer ', '');
+    const token = authHeader.slice("Bearer ".length);
+    const parts = token.split(".");
+    if (parts.length !== 3) throw new Error("Invalid token format");
+
+    const [headerB64, payloadB64, signatureB64] = parts;
+
+    const header = JSON.parse(b64UrlToString(headerB64));
+    if (header?.alg !== "HS256") {
+      throw new Error(`Unexpected algorithm: ${header?.alg}`);
+    }
+
+    const payload = JSON.parse(b64UrlToString(payloadB64));
+
+    // Check expiration
+    if (payload?.exp && payload.exp < Math.floor(Date.now() / 1000)) {
+      throw new Error("Token expired");
+    }
+
+    if (payload?.role !== "admin") {
+      return { valid: false };
+    }
+
     const key = await crypto.subtle.importKey(
       "raw",
       new TextEncoder().encode(jwtSecret),
       { name: "HMAC", hash: "SHA-256" },
       false,
-      ["sign", "verify"]
+      ["verify"]
     );
 
-    // Manually verify HS256 JWT to avoid algorithm mismatch issues
-    const parts = token.split('.');
-    if (parts.length !== 3) {
-      throw new Error("Invalid token format");
-    }
-
-    const [headerB64, payloadB64, signatureB64] = parts;
-    
-    // Verify header specifies HS256
-    const header = JSON.parse(atob(headerB64.replace(/-/g, '+').replace(/_/g, '/')));
-    if (header.alg !== 'HS256') {
-      throw new Error(`Unexpected algorithm: ${header.alg}`);
-    }
-
-    // Verify signature
     const signatureInput = `${headerB64}.${payloadB64}`;
-    const signature = Uint8Array.from(atob(signatureB64.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
-    
+    const signature = b64UrlToUint8Array(signatureB64);
+
     const isValid = await crypto.subtle.verify(
       "HMAC",
       key,
@@ -174,19 +193,6 @@ async function verifyAdminToken(authHeader: string | null): Promise<{ valid: boo
 
     if (!isValid) {
       throw new Error("Invalid signature");
-    }
-
-    // Parse and validate payload
-    const payload = JSON.parse(atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/')));
-    
-    // Check expiration
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-      throw new Error("Token expired");
-    }
-    
-    if (payload.role !== 'admin') {
-      console.log("Token does not have admin role");
-      return { valid: false };
     }
 
     return { valid: true, payload };
