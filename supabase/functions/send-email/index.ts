@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { SMTPClient } from "https://deno.land/x/denomailer@1.5.2/mod.ts";
 
 // CORS configuration with origin validation
 const ALLOWED_ORIGINS = [
@@ -243,49 +244,47 @@ serve(async (req) => {
       `;
     }
 
+    if (!subject || !html) {
+      throw new Error("Invalid email request payload");
+    }
+
     console.log("Sending email with subject:", subject);
     console.log("To:", to);
 
-    // Send email via Brevo API (v3)
-    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "api-key": brevoApiKey,
-        "accept": "application/json",
+    // Send email via Brevo SMTP (SMTP relay). This works with Brevo's SMTP credentials
+    // (login like ***@smtp-brevo.com + password like xsmtpsib-...).
+    const smtpHost = "smtp-relay.brevo.com";
+    const smtpPort = 465; // TLS (implicit). More reliable in serverless than STARTTLS.
+
+    const client = new SMTPClient({
+      connection: {
+        hostname: smtpHost,
+        port: smtpPort,
+        tls: true,
+        auth: {
+          username: brevoLogin,
+          password: brevoApiKey,
+        },
       },
-      body: JSON.stringify({
-        sender: { name: "Axis Economy Store", email: senderEmail },
-        to: [{ email: to }],
-        subject,
-        htmlContent: html,
-      }),
     });
 
-    const responseText = await response.text();
-    console.log("Brevo response status:", response.status);
-    console.log("Brevo response:", responseText);
-
-    if (!response.ok) {
-      console.error("Brevo error:", responseText);
-      throw new Error(`Failed to send email: ${responseText}`);
-    }
-
-    let result;
     try {
-      result = JSON.parse(responseText);
-    } catch {
-      result = { messageId: "unknown" };
+      await client.send({
+        from: `Axis Economy Store <${senderEmail}>`,
+        to,
+        subject,
+        content: `Axis Economy Store\n\n${subject}`,
+        html,
+      });
+      console.log("Email sent successfully via SMTP");
+    } finally {
+      await client.close();
     }
-    console.log("Email sent successfully:", result);
 
-    return new Response(
-      JSON.stringify({ success: true, messageId: result.messageId }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      }
-    );
+    return new Response(JSON.stringify({ success: true, messageId: "smtp" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
   } catch (error: any) {
     console.error("Send email error:", error);
     return new Response(
