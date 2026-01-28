@@ -60,6 +60,7 @@ import { Helmet } from "react-helmet-async";
 import { formatPrice } from "@/lib/products";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, CartesianGrid, BarChart, Bar, XAxis, YAxis } from "recharts";
 import AdminUsersSection from "@/components/AdminUsersSection";
+import { invokeEdgeFunction } from "@/lib/edge-functions";
 
 interface LogEntry {
   id: string;
@@ -134,7 +135,7 @@ const Admin = () => {
 
   const getAdminHeaders = () => {
     const token = getAdminToken();
-    return token ? { "x-admin-token": token } : undefined;
+    return token ? { "x-admin-token": `Bearer ${token}` } : undefined;
   };
 
   // Check auth on load - validate token exists
@@ -190,11 +191,10 @@ const Admin = () => {
 
     setLoginLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("admin-login", {
+      const data = await invokeEdgeFunction<any>("admin-login", {
         body: { username, password },
       });
 
-      if (error) throw error;
       if (data.success && data.token) {
         sessionStorage.setItem("admin_token", data.token);
         sessionStorage.setItem("admin_username", username);
@@ -249,16 +249,15 @@ const Admin = () => {
     setPasswordChangeLoading(true);
     try {
       const token = getAdminToken();
-      const { data, error } = await supabase.functions.invoke("admin-login", {
-        headers: { Authorization: `Bearer ${token}` },
-        body: { 
+      const data = await invokeEdgeFunction<any>("admin-login", {
+        authToken: token ?? undefined,
+        body: {
           action: "change_password",
           currentPassword,
           newPassword,
         },
       });
 
-      if (error) throw error;
       if (data.success) {
         // Update token with new one
         if (data.token) {
@@ -300,12 +299,11 @@ const Admin = () => {
       }
 
       // Fetch all admin data through edge function (bypasses RLS properly)
-      const { data: response, error } = await supabase.functions.invoke("admin-data", {
+      const response = await invokeEdgeFunction<any>("admin-data", {
         headers: getAdminHeaders(),
         body: { dataType: "all" },
       });
 
-      if (error) throw error;
       if (!response?.success) throw new Error(response?.error || "Failed to fetch data");
 
       const { orders: ordersData, logs: logsData, coupons: couponsData, settings: settingsData } = response.data;
@@ -360,13 +358,12 @@ const Admin = () => {
 
     setMaintenanceToggling(true);
     try {
-    const { data, error } = await supabase.functions.invoke("admin-action", {
+      const data = await invokeEdgeFunction<any>("admin-action", {
         headers: getAdminHeaders(),
         body: { action: "toggle_maintenance", value: newValue },
       });
 
-      if (error) throw error;
-    if (data?.error) throw new Error(data.error);
+      if (data?.error) throw new Error(data.error);
 
       setSettings((prev: any) => ({ ...prev, maintenance_mode: newValue }));
       toast.success(
@@ -383,11 +380,10 @@ const Admin = () => {
   const retryDelivery = async (orderId: string) => {
     setRetryingOrder(orderId);
     try {
-      const { error } = await supabase.functions.invoke("admin-action", {
+      await invokeEdgeFunction<any>("admin-action", {
         headers: getAdminHeaders(),
         body: { action: "retry_delivery", orderId },
       });
-      if (error) throw error;
       toast.success("Delivery retry successful!");
       fetchData();
     } catch (err: any) {
@@ -401,7 +397,7 @@ const Admin = () => {
       toast.error("Please enter a coupon code");
       return;
     }
-    const { error } = await supabase.functions.invoke("admin-action", {
+    await invokeEdgeFunction<any>("admin-action", {
       headers: getAdminHeaders(),
       body: {
         action: "create_coupon",
@@ -413,24 +409,20 @@ const Admin = () => {
         },
       },
     });
-    if (!error) {
+    {
       toast.success("Coupon created");
       setNewCoupon({ code: "", type: "flat", value: 0, maxUses: 100 });
       fetchData();
-    } else {
-      toast.error("Failed to create coupon");
     }
   };
 
   const deleteCoupon = async (couponId: string) => {
-    const { error } = await supabase.functions.invoke("admin-action", {
+    await invokeEdgeFunction<any>("admin-action", {
       headers: getAdminHeaders(),
       body: { action: "delete_coupon", couponId },
     });
-    if (!error) {
-      toast.success("Coupon deleted");
-      fetchData();
-    }
+    toast.success("Coupon deleted");
+    fetchData();
   };
 
   const startEditCoupon = (coupon: any) => {
@@ -444,10 +436,10 @@ const Admin = () => {
   };
 
   const saveEditCoupon = async (couponId: string) => {
-    const { error } = await supabase.functions.invoke("admin-action", {
+    await invokeEdgeFunction<any>("admin-action", {
       headers: getAdminHeaders(),
-      body: { 
-        action: "update_coupon", 
+      body: {
+        action: "update_coupon",
         couponId,
         updates: {
           code: editCouponData.code.toUpperCase(),
@@ -457,28 +449,22 @@ const Admin = () => {
         },
       },
     });
-    if (!error) {
-      toast.success("Coupon updated");
-      setEditingCoupon(null);
-      fetchData();
-    } else {
-      toast.error("Failed to update coupon");
-    }
+    toast.success("Coupon updated");
+    setEditingCoupon(null);
+    fetchData();
   };
 
   const toggleCouponStatus = async (couponId: string, currentStatus: boolean) => {
-    const { error } = await supabase.functions.invoke("admin-action", {
+    await invokeEdgeFunction<any>("admin-action", {
       headers: getAdminHeaders(),
-      body: { 
-        action: "toggle_coupon_status", 
+      body: {
+        action: "toggle_coupon_status",
         couponId,
         isActive: !currentStatus,
       },
     });
-    if (!error) {
-      toast.success(`Coupon ${!currentStatus ? 'activated' : 'deactivated'}`);
-      fetchData();
-    }
+    toast.success(`Coupon ${!currentStatus ? 'activated' : 'deactivated'}`);
+    fetchData();
   };
 
   const handleClearData = async () => {
@@ -494,14 +480,13 @@ const Admin = () => {
 
     setClearLoading(true);
     try {
-      const { error } = await supabase.functions.invoke("admin-action", {
+      await invokeEdgeFunction<any>("admin-action", {
         headers: getAdminHeaders(),
-        body: { 
-          action: "clear_data", 
-          password: clearPassword 
+        body: {
+          action: "clear_data",
+          password: clearPassword,
         },
       });
-      if (error) throw error;
       toast.success("All data cleared successfully");
       setShowClearDialog(false);
       setClearPassword("");
