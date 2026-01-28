@@ -133,13 +133,18 @@ async function verifyAdminToken(
   authHeader: string | null,
   adminTokenHeader: string | null
 ): Promise<{ valid: boolean; payload?: any }> {
-  const token = authHeader?.startsWith("Bearer ")
+  // IMPORTANT: Supabase client calls will almost always include an Authorization header
+  // (anon key or user JWT). Our admin JWT is passed via x-admin-token, so we must
+  // prefer that header when present.
+  const tokenFromAdminHeader = adminTokenHeader
+    ? (adminTokenHeader.startsWith("Bearer ")
+        ? adminTokenHeader.slice("Bearer ".length)
+        : adminTokenHeader)
+    : null;
+  const tokenFromAuthHeader = authHeader?.startsWith("Bearer ")
     ? authHeader.slice("Bearer ".length)
-    : adminTokenHeader
-      ? (adminTokenHeader.startsWith("Bearer ")
-          ? adminTokenHeader.slice("Bearer ".length)
-          : adminTokenHeader)
-      : null;
+    : null;
+  const token = tokenFromAdminHeader ?? tokenFromAuthHeader;
 
   if (!token) return { valid: false };
 
@@ -308,6 +313,10 @@ serve(async (req) => {
   // Verify admin authentication for ALL requests
   const authHeader = req.headers.get('authorization');
   const adminTokenHeader = req.headers.get('x-admin-token');
+  console.log(
+    "Admin-action auth headers present:",
+    JSON.stringify({ hasAuthorization: !!authHeader, hasAdminToken: !!adminTokenHeader })
+  );
   const { valid, payload } = await verifyAdminToken(authHeader, adminTokenHeader);
 
   if (!valid) {
