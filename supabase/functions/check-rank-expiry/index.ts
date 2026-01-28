@@ -4,14 +4,22 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 const ALLOWED_ORIGINS = [
   'https://preview--jeqsesqlkjklhyvszpgg.lovable.app',
   'https://jeqsesqlkjklhyvszpgg.lovable.app',
+  'https://id-preview--2c705b12-7ee5-450c-8faa-9ab7ac9e2bcd.lovable.app',
+  'https://axis-sparkle-store.lovable.app',
   'http://localhost:5173',
   'http://localhost:8080',
 ];
 
 function getCorsHeaders(origin: string | null): Record<string, string> {
-  const isAllowed = origin && ALLOWED_ORIGINS.some(allowed => 
-    origin === allowed || origin.endsWith('.lovable.app')
-  );
+  const isAllowed =
+    origin &&
+    ALLOWED_ORIGINS.some(
+      (allowed) =>
+        origin === allowed ||
+        origin.endsWith(".lovable.app") ||
+        origin.endsWith(".lovableproject.com") ||
+        origin.endsWith(".lovable.dev")
+    );
   
   return {
     'Access-Control-Allow-Origin': isAllowed ? origin! : ALLOWED_ORIGINS[0],
@@ -148,8 +156,9 @@ serve(async (req) => {
     const rconPassword = Deno.env.get("RCON_PASSWORD");
 
     const now = new Date();
-    const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
-    const oneDayFromNow = new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000);
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+    const utcMidnightMs = (d: Date) =>
+      Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 
     // Fetch all active ranks
     const ranksResponse = await fetch(
@@ -191,7 +200,7 @@ serve(async (req) => {
 
     for (const rank of activeRanks) {
       const expiresAt = new Date(rank.expires_at);
-      const daysLeft = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      const daysLeft = Math.floor((utcMidnightMs(expiresAt) - utcMidnightMs(now)) / MS_PER_DAY);
 
       console.log(`Processing rank: ${rank.rank_name} for ${rank.minecraft_username}, expires: ${expiresAt.toISOString()}, days left: ${daysLeft}`);
 
@@ -260,8 +269,8 @@ serve(async (req) => {
           }),
         });
 
-      } else if (daysLeft <= 3 && daysLeft > 0) {
-        // Send reminder email if we have the user's email
+      } else if (daysLeft === 2) {
+        // Send reminder email exactly 2 days before expiry (calendar days, UTC)
         if (rank.order_id) {
           // Fetch order to get user email
           const orderResponse = await fetch(
@@ -275,10 +284,7 @@ serve(async (req) => {
           );
 
           const orders = await orderResponse.json();
-          if (orders && orders.length > 0 && orders[0].user_email) {
-            // Check if we already sent a reminder today
-            const reminderKey = `${rank.id}_${daysLeft}`;
-            
+           if (orders && orders.length > 0 && orders[0].user_email) {
             // Send expiry reminder email
             await sendEmail(supabaseUrl, supabaseKey, {
               type: "expiry_reminder",
