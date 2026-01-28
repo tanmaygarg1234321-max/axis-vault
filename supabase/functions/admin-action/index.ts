@@ -100,7 +100,7 @@ function getCorsHeaders(origin: string | null): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": isAllowed ? origin! : ALLOWED_ORIGINS[0],
     "Access-Control-Allow-Headers":
-      "authorization, x-client-info, apikey, content-type",
+      "authorization, x-admin-token, x-client-info, apikey, content-type",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Credentials": "true",
     Vary: "Origin",
@@ -130,11 +130,18 @@ function sanitizeRankName(rankName: string): string {
 
 // Verify admin JWT token using HS256 algorithm (matching admin-login)
 async function verifyAdminToken(
-  authHeader: string | null
+  authHeader: string | null,
+  adminTokenHeader: string | null
 ): Promise<{ valid: boolean; payload?: any }> {
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return { valid: false };
-  }
+  const token = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice("Bearer ".length)
+    : adminTokenHeader
+      ? (adminTokenHeader.startsWith("Bearer ")
+          ? adminTokenHeader.slice("Bearer ".length)
+          : adminTokenHeader)
+      : null;
+
+  if (!token) return { valid: false };
 
   const jwtSecret = Deno.env.get("ADMIN_JWT_SECRET");
   if (!jwtSecret) {
@@ -153,7 +160,6 @@ async function verifyAdminToken(
     Uint8Array.from(b64UrlToString(str), (c) => c.charCodeAt(0));
 
   try {
-    const token = authHeader.slice("Bearer ".length);
     const parts = token.split(".");
     if (parts.length !== 3) throw new Error("Invalid token format");
 
@@ -301,7 +307,8 @@ serve(async (req) => {
 
   // Verify admin authentication for ALL requests
   const authHeader = req.headers.get('authorization');
-  const { valid, payload } = await verifyAdminToken(authHeader);
+  const adminTokenHeader = req.headers.get('x-admin-token');
+  const { valid, payload } = await verifyAdminToken(authHeader, adminTokenHeader);
 
   if (!valid) {
     console.log("Unauthorized admin action attempt");

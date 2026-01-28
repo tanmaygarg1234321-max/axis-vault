@@ -132,6 +132,11 @@ const Admin = () => {
   // Get admin token for API calls
   const getAdminToken = () => sessionStorage.getItem("admin_token");
 
+  const getAdminHeaders = () => {
+    const token = getAdminToken();
+    return token ? { "x-admin-token": token } : undefined;
+  };
+
   // Check auth on load - validate token exists
   useEffect(() => {
     const token = sessionStorage.getItem("admin_token");
@@ -296,7 +301,7 @@ const Admin = () => {
 
       // Fetch all admin data through edge function (bypasses RLS properly)
       const { data: response, error } = await supabase.functions.invoke("admin-data", {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: getAdminHeaders(),
         body: { dataType: "all" },
       });
 
@@ -356,7 +361,7 @@ const Admin = () => {
     setMaintenanceToggling(true);
     try {
     const { data, error } = await supabase.functions.invoke("admin-action", {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: getAdminHeaders(),
         body: { action: "toggle_maintenance", value: newValue },
       });
 
@@ -378,9 +383,8 @@ const Admin = () => {
   const retryDelivery = async (orderId: string) => {
     setRetryingOrder(orderId);
     try {
-      const token = getAdminToken();
       const { error } = await supabase.functions.invoke("admin-action", {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: getAdminHeaders(),
         body: { action: "retry_delivery", orderId },
       });
       if (error) throw error;
@@ -397,9 +401,8 @@ const Admin = () => {
       toast.error("Please enter a coupon code");
       return;
     }
-    const token = getAdminToken();
     const { error } = await supabase.functions.invoke("admin-action", {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: getAdminHeaders(),
       body: {
         action: "create_coupon",
         coupon: {
@@ -420,9 +423,8 @@ const Admin = () => {
   };
 
   const deleteCoupon = async (couponId: string) => {
-    const token = getAdminToken();
     const { error } = await supabase.functions.invoke("admin-action", {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: getAdminHeaders(),
       body: { action: "delete_coupon", couponId },
     });
     if (!error) {
@@ -442,9 +444,8 @@ const Admin = () => {
   };
 
   const saveEditCoupon = async (couponId: string) => {
-    const token = getAdminToken();
     const { error } = await supabase.functions.invoke("admin-action", {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: getAdminHeaders(),
       body: { 
         action: "update_coupon", 
         couponId,
@@ -466,9 +467,8 @@ const Admin = () => {
   };
 
   const toggleCouponStatus = async (couponId: string, currentStatus: boolean) => {
-    const token = getAdminToken();
     const { error } = await supabase.functions.invoke("admin-action", {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: getAdminHeaders(),
       body: { 
         action: "toggle_coupon_status", 
         couponId,
@@ -494,9 +494,8 @@ const Admin = () => {
 
     setClearLoading(true);
     try {
-      const token = getAdminToken();
       const { error } = await supabase.functions.invoke("admin-action", {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: getAdminHeaders(),
         body: { 
           action: "clear_data", 
           password: clearPassword 
