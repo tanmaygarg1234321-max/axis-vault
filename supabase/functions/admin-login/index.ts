@@ -5,6 +5,8 @@ import { create, getNumericDate } from "https://deno.land/x/djwt@v2.8/mod.ts";
 const ALLOWED_ORIGINS = [
   "https://preview--jeqsesqlkjklhyvszpgg.lovable.app",
   "https://jeqsesqlkjklhyvszpgg.lovable.app",
+  "https://id-preview--2c705b12-7ee5-450c-8faa-9ab7ac9e2bcd.lovable.app",
+  "https://axis-sparkle-store.lovable.app",
   "http://localhost:5173",
   "http://localhost:8080",
 ];
