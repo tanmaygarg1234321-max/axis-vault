@@ -4,6 +4,8 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 const ALLOWED_ORIGINS = [
   'https://preview--jeqsesqlkjklhyvszpgg.lovable.app',
   'https://jeqsesqlkjklhyvszpgg.lovable.app',
+  'https://id-preview--2c705b12-7ee5-450c-8faa-9ab7ac9e2bcd.lovable.app',
+  'https://axis-sparkle-store.lovable.app',
   'http://localhost:5173',
   'http://localhost:8080',
 ];
@@ -50,15 +52,17 @@ serve(async (req) => {
   try {
     const { type, to, orderData, expiryData }: EmailRequest = await req.json();
 
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-    const senderEmail = Deno.env.get("SENDER_EMAIL") || "onboarding@resend.dev";
+    // Brevo SMTP credentials
+    const brevoLogin = Deno.env.get("BREVO_SMTP_LOGIN");
+    const brevoApiKey = Deno.env.get("BREVO_API_KEY");
+    const senderEmail = Deno.env.get("SENDER_EMAIL") || "noreply@yourdomain.com";
 
     console.log("Email request:", { type, to, hasOrderData: !!orderData, hasExpiryData: !!expiryData });
     console.log("Sender email:", senderEmail);
 
-    if (!resendApiKey) {
-      console.error("RESEND_API_KEY not configured");
-      throw new Error("RESEND_API_KEY not configured");
+    if (!brevoApiKey || !brevoLogin) {
+      console.error("BREVO_API_KEY or BREVO_SMTP_LOGIN not configured");
+      throw new Error("Email service not configured");
     }
 
     let subject = "";
@@ -242,27 +246,28 @@ serve(async (req) => {
     console.log("Sending email with subject:", subject);
     console.log("To:", to);
 
-    // Send email via Resend
-    const response = await fetch("https://api.resend.com/emails", {
+    // Send email via Brevo API (v3)
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${resendApiKey}`,
+        "api-key": brevoApiKey,
+        "accept": "application/json",
       },
       body: JSON.stringify({
-        from: `Axis Economy Store <${senderEmail}>`,
-        to: [to],
+        sender: { name: "Axis Economy Store", email: senderEmail },
+        to: [{ email: to }],
         subject,
-        html,
+        htmlContent: html,
       }),
     });
 
     const responseText = await response.text();
-    console.log("Resend response status:", response.status);
-    console.log("Resend response:", responseText);
+    console.log("Brevo response status:", response.status);
+    console.log("Brevo response:", responseText);
 
     if (!response.ok) {
-      console.error("Resend error:", responseText);
+      console.error("Brevo error:", responseText);
       throw new Error(`Failed to send email: ${responseText}`);
     }
 
@@ -270,12 +275,12 @@ serve(async (req) => {
     try {
       result = JSON.parse(responseText);
     } catch {
-      result = { id: "unknown" };
+      result = { messageId: "unknown" };
     }
     console.log("Email sent successfully:", result);
 
     return new Response(
-      JSON.stringify({ success: true, id: result.id }),
+      JSON.stringify({ success: true, messageId: result.messageId }),
       {
         status: 200,
         headers: { "Content-Type": "application/json", ...corsHeaders },

@@ -355,19 +355,21 @@ const Admin = () => {
 
     setMaintenanceToggling(true);
     try {
-      const { error } = await supabase.functions.invoke("admin-action", {
+    const { data, error } = await supabase.functions.invoke("admin-action", {
         headers: { Authorization: `Bearer ${token}` },
         body: { action: "toggle_maintenance", value: newValue },
       });
 
       if (error) throw error;
+    if (data?.error) throw new Error(data.error);
 
       setSettings((prev: any) => ({ ...prev, maintenance_mode: newValue }));
       toast.success(
         `Maintenance mode ${newValue === "true" ? "enabled" : "disabled"}`
       );
     } catch (err: any) {
-      toast.error(err?.message || "Failed to toggle maintenance mode");
+    console.error("Maintenance toggle error:", err);
+    toast.error(err?.message || "Failed to toggle maintenance mode. Check console for details.");
     } finally {
       setMaintenanceToggling(false);
     }
