@@ -251,16 +251,15 @@ serve(async (req) => {
     console.log("Sending email with subject:", subject);
     console.log("To:", to);
 
-    // Send email via Brevo SMTP (SMTP relay). This works with Brevo's SMTP credentials
-    // (login like ***@smtp-brevo.com + password like xsmtpsib-...).
+    // Send email via Brevo SMTP (SMTP relay). Uses port 587 (STARTTLS).
     const smtpHost = "smtp-relay.brevo.com";
-    const smtpPort = 465; // TLS (implicit). More reliable in serverless than STARTTLS.
+    const smtpPort = 587;
 
     const client = new SMTPClient({
       connection: {
         hostname: smtpHost,
         port: smtpPort,
-        tls: true,
+        tls: false, // STARTTLS will upgrade
         auth: {
           username: brevoLogin,
           password: brevoApiKey,
