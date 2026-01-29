@@ -99,6 +99,7 @@ const AppRoutes = () => (
   <MaintenanceGate>
     <Routes>
       <Route path="/" element={<Index />} />
+      <Route path="/auth" element={<Auth />} />
       <Route path="/store" element={<Store />} />
       <Route path="/checkout" element={<Checkout />} />
       <Route path="/payment-status" element={<PaymentStatus />} />
