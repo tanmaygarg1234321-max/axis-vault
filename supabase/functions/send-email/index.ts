@@ -53,16 +53,16 @@ serve(async (req) => {
   try {
     const { type, to, orderData, expiryData }: EmailRequest = await req.json();
 
-    // Brevo SMTP credentials
-    const brevoLogin = Deno.env.get("BREVO_SMTP_LOGIN");
-    const brevoApiKey = Deno.env.get("BREVO_API_KEY");
-    const senderEmail = Deno.env.get("SENDER_EMAIL") || "noreply@yourdomain.com";
+    // Gmail SMTP credentials
+    const gmailUser = Deno.env.get("GMAIL_SMTP_USER");
+    const gmailPassword = Deno.env.get("GMAIL_SMTP_PASSWORD");
+    const senderEmail = gmailUser || "axiseconomy@gmail.com";
 
     console.log("Email request:", { type, to, hasOrderData: !!orderData, hasExpiryData: !!expiryData });
     console.log("Sender email:", senderEmail);
 
-    if (!brevoApiKey || !brevoLogin) {
-      console.error("BREVO_API_KEY or BREVO_SMTP_LOGIN not configured");
+    if (!gmailUser || !gmailPassword) {
+      console.error("GMAIL_SMTP_USER or GMAIL_SMTP_PASSWORD not configured");
       throw new Error("Email service not configured");
     }
 
@@ -251,8 +251,8 @@ serve(async (req) => {
     console.log("Sending email with subject:", subject);
     console.log("To:", to);
 
-    // Send email via Brevo SMTP (SMTP relay). Uses port 587 (STARTTLS).
-    const smtpHost = "smtp-relay.brevo.com";
+    // Send email via Gmail SMTP. Uses port 587 (STARTTLS).
+    const smtpHost = "smtp.gmail.com";
     const smtpPort = 587;
 
     const client = new SMTPClient({
@@ -261,8 +261,8 @@ serve(async (req) => {
         port: smtpPort,
         tls: false, // STARTTLS will upgrade
         auth: {
-          username: brevoLogin,
-          password: brevoApiKey,
+          username: gmailUser,
+          password: gmailPassword,
         },
       },
     });
