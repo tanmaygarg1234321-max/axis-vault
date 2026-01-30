@@ -109,6 +109,9 @@ const AppRoutes = () => (
       <Route path="/privacy-policy" element={<PrivacyPolicy />} />
       <Route path="/maintenance" element={<Maintenance />} />
       <Route path="/admin" element={<Admin />} />
+      <Route path="/mypurchases" element={<PurchaseHistory />} />
+      <Route path="/purchases" element={<PurchaseHistory />} />
+      <Route path="*" element={<NotFound />} />
     </Routes>
   </MaintenanceGate>
 );

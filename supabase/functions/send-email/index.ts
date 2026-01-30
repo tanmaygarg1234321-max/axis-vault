@@ -42,6 +42,36 @@ interface EmailRequest {
   };
 }
 
+// Helper to log email events to database
+async function logEmailEvent(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  type: string,
+  to: string,
+  success: boolean,
+  details: string,
+  orderId?: string
+) {
+  try {
+    await fetch(`${supabaseUrl}/rest/v1/logs`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": serviceRoleKey,
+        "Authorization": `Bearer ${serviceRoleKey}`,
+      },
+      body: JSON.stringify({
+        type: success ? "email_sent" : "email_error",
+        message: `Email ${type} to ${to}: ${success ? "Success" : "Failed"}`,
+        metadata: { emailType: type, recipient: to, details, success },
+        order_id: orderId || null,
+      }),
+    });
+  } catch (e) {
+    console.error("Failed to log email event:", e);
+  }
+}
+
 serve(async (req) => {
   const origin = req.headers.get('origin');
   const corsHeaders = getCorsHeaders(origin);
@@ -49,6 +79,9 @@ serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
   try {
     const { type, to, orderData, expiryData }: EmailRequest = await req.json();
@@ -267,6 +300,9 @@ serve(async (req) => {
       },
     });
 
+    let emailSent = false;
+    let errorMessage = "";
+    
     try {
       await client.send({
         from: `Axis Economy Store <${senderEmail}>`,
@@ -275,9 +311,33 @@ serve(async (req) => {
         content: `Axis Economy Store\n\n${subject}`,
         html,
       });
+      emailSent = true;
       console.log("Email sent successfully via SMTP");
-    } finally {
+    } catch (sendError: any) {
+      errorMessage = sendError.message || String(sendError);
+      console.error("SMTP send error:", errorMessage);
+    }
+
+    // Close connection safely
+    try {
       await client.close();
+    } catch (closeError) {
+      console.log("Connection close handled:", closeError);
+    }
+
+    // Log the email event
+    await logEmailEvent(
+      supabaseUrl,
+      serviceRoleKey,
+      type,
+      to,
+      emailSent,
+      emailSent ? "Email delivered via Gmail SMTP" : errorMessage,
+      orderData?.orderId
+    );
+
+    if (!emailSent) {
+      throw new Error(`Failed to send email: ${errorMessage}`);
     }
 
     return new Response(JSON.stringify({ success: true, messageId: "smtp" }), {
@@ -286,6 +346,20 @@ serve(async (req) => {
     });
   } catch (error: any) {
     console.error("Send email error:", error);
+    
+    // Log the error
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+    
+    await logEmailEvent(
+      supabaseUrl,
+      serviceRoleKey,
+      "unknown",
+      "unknown",
+      false,
+      error.message || String(error)
+    );
+    
     return new Response(
       JSON.stringify({ error: error.message }),
       {
