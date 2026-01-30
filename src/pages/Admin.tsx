@@ -537,6 +537,8 @@ const Admin = () => {
       error: <AlertTriangle className="w-4 h-4 text-red-400" />,
       admin: <Shield className="w-4 h-4 text-yellow-400" />,
       info: <Activity className="w-4 h-4 text-cyan-400" />,
+      email_sent: <CheckCircle2 className="w-4 h-4 text-emerald-400" />,
+      email_error: <XCircle className="w-4 h-4 text-red-400" />,
     };
     return icons[type] || <Activity className="w-4 h-4 text-muted-foreground" />;
   };
@@ -550,6 +552,8 @@ const Admin = () => {
       error: "bg-red-500/10 border-red-500/20",
       admin: "bg-yellow-500/10 border-yellow-500/20",
       info: "bg-cyan-500/10 border-cyan-500/20",
+      email_sent: "bg-emerald-500/10 border-emerald-500/20",
+      email_error: "bg-red-500/10 border-red-500/20",
     };
     return colors[type] || "bg-muted/50 border-border";
   };
@@ -595,6 +599,8 @@ const Admin = () => {
     error: "#ef4444",
     admin: "#f59e0b",
     info: "#06b6d4",
+    email_sent: "#10b981",
+    email_error: "#ef4444",
   };
 
   // Filter logs
