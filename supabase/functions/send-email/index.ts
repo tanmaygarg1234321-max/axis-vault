@@ -1,27 +1,10 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { SMTPClient } from "https://deno.land/x/denomailer@1.5.2/mod.ts";
 
-// CORS configuration with origin validation
-const ALLOWED_ORIGINS = [
-  'https://preview--jeqsesqlkjklhyvszpgg.lovable.app',
-  'https://jeqsesqlkjklhyvszpgg.lovable.app',
-  'https://id-preview--2c705b12-7ee5-450c-8faa-9ab7ac9e2bcd.lovable.app',
-  'https://axis-sparkle-store.lovable.app',
-  'http://localhost:5173',
-  'http://localhost:8080',
-];
-
-function getCorsHeaders(origin: string | null): Record<string, string> {
-  const isAllowed = origin && ALLOWED_ORIGINS.some(allowed => 
-    origin === allowed || origin.endsWith('.lovable.app')
-  );
-  
-  return {
-    'Access-Control-Allow-Origin': isAllowed ? origin! : ALLOWED_ORIGINS[0],
-    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-    'Access-Control-Allow-Credentials': 'true',
-  };
-}
+// CORS configuration
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+};
 
 interface EmailRequest {
   type: "receipt" | "failed" | "expiry_reminder";
@@ -72,10 +55,36 @@ async function logEmailEvent(
   }
 }
 
+// Send email via Resend API
+async function sendViaResend(apiKey: string, to: string, subject: string, html: string): Promise<{ success: boolean; id?: string; error?: string }> {
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "Axis Economy Store <onboarding@resend.dev>",
+        to: [to],
+        subject,
+        html,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return { success: false, error: data.message || `HTTP ${response.status}` };
+    }
+
+    return { success: true, id: data.id };
+  } catch (err: any) {
+    return { success: false, error: err.message || String(err) };
+  }
+}
+
 serve(async (req) => {
-  const origin = req.headers.get('origin');
-  const corsHeaders = getCorsHeaders(origin);
-  
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -86,16 +95,13 @@ serve(async (req) => {
   try {
     const { type, to, orderData, expiryData }: EmailRequest = await req.json();
 
-    // Gmail SMTP credentials
-    const gmailUser = Deno.env.get("GMAIL_SMTP_USER");
-    const gmailPassword = Deno.env.get("GMAIL_SMTP_PASSWORD");
-    const senderEmail = gmailUser || "axiseconomy@gmail.com";
+    const resendApiKey = Deno.env.get("RESEND_API_KEY");
 
     console.log("Email request:", { type, to, hasOrderData: !!orderData, hasExpiryData: !!expiryData });
-    console.log("Sender email:", senderEmail);
 
-    if (!gmailUser || !gmailPassword) {
-      console.error("GMAIL_SMTP_USER or GMAIL_SMTP_PASSWORD not configured");
+    if (!resendApiKey) {
+      console.error("RESEND_API_KEY not configured");
+      await logEmailEvent(supabaseUrl, serviceRoleKey, type, to, false, "RESEND_API_KEY not configured");
       throw new Error("Email service not configured");
     }
 
@@ -188,7 +194,6 @@ serve(async (req) => {
             .label { color: #a1a1aa; }
             .value { font-weight: 600; }
             .footer { text-align: center; color: #71717a; font-size: 12px; margin-top: 40px; }
-            .btn { display: inline-block; background: #10b981; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 16px; }
           </style>
         </head>
         <body>
@@ -239,7 +244,6 @@ serve(async (req) => {
             .label { color: #a1a1aa; }
             .value { font-weight: 600; }
             .footer { text-align: center; color: #71717a; font-size: 12px; margin-top: 40px; }
-            .btn { display: inline-block; background: #10b981; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 16px; }
           </style>
         </head>
         <body>
@@ -278,87 +282,33 @@ serve(async (req) => {
     }
 
     if (!subject || !html) {
+      await logEmailEvent(supabaseUrl, serviceRoleKey, type, to, false, "Invalid email request payload");
       throw new Error("Invalid email request payload");
     }
 
     console.log("Sending email with subject:", subject);
     console.log("To:", to);
 
-    // Send email via Gmail SMTP. Uses port 587 (STARTTLS).
-    const smtpHost = "smtp.gmail.com";
-    const smtpPort = 587;
+    // Send via Resend API
+    const result = await sendViaResend(resendApiKey, to, subject, html);
 
-    const client = new SMTPClient({
-      connection: {
-        hostname: smtpHost,
-        port: smtpPort,
-        tls: false, // STARTTLS will upgrade
-        auth: {
-          username: gmailUser,
-          password: gmailPassword,
-        },
-      },
-    });
+    console.log("Resend result:", result);
 
-    let emailSent = false;
-    let errorMessage = "";
-    
-    try {
-      await client.send({
-        from: `Axis Economy Store <${senderEmail}>`,
-        to,
-        subject,
-        content: `Axis Economy Store\n\n${subject}`,
-        html,
-      });
-      emailSent = true;
-      console.log("Email sent successfully via SMTP");
-    } catch (sendError: any) {
-      errorMessage = sendError.message || String(sendError);
-      console.error("SMTP send error:", errorMessage);
+    if (!result.success) {
+      console.error("Resend error:", result.error);
+      await logEmailEvent(supabaseUrl, serviceRoleKey, type, to, false, result.error || "Resend API error", orderData?.orderId);
+      throw new Error(result.error || "Failed to send email");
     }
 
-    // Close connection safely
-    try {
-      await client.close();
-    } catch (closeError) {
-      console.log("Connection close handled:", closeError);
-    }
+    // Log success
+    await logEmailEvent(supabaseUrl, serviceRoleKey, type, to, true, `Email sent via Resend. ID: ${result.id}`, orderData?.orderId);
 
-    // Log the email event
-    await logEmailEvent(
-      supabaseUrl,
-      serviceRoleKey,
-      type,
-      to,
-      emailSent,
-      emailSent ? "Email delivered via Gmail SMTP" : errorMessage,
-      orderData?.orderId
-    );
-
-    if (!emailSent) {
-      throw new Error(`Failed to send email: ${errorMessage}`);
-    }
-
-    return new Response(JSON.stringify({ success: true, messageId: "smtp" }), {
+    return new Response(JSON.stringify({ success: true, messageId: result.id }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   } catch (error: any) {
     console.error("Send email error:", error);
-    
-    // Log the error
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-    
-    await logEmailEvent(
-      supabaseUrl,
-      serviceRoleKey,
-      "unknown",
-      "unknown",
-      false,
-      error.message || String(error)
-    );
     
     return new Response(
       JSON.stringify({ error: error.message }),
