@@ -761,6 +761,105 @@ serve(async (req) => {
         break;
       }
 
+      case "send_bulk_email": {
+        // Validate email data
+        if (!params.subject || typeof params.subject !== 'string' || params.subject.length < 1 || params.subject.length > 200) {
+          throw new Error("Invalid subject (1-200 characters required)");
+        }
+        if (!params.message || typeof params.message !== 'string' || params.message.length < 1 || params.message.length > 10000) {
+          throw new Error("Invalid message (1-10000 characters required)");
+        }
+
+        // Fetch all unique user emails from orders
+        const emailsResponse = await fetch(
+          `${supabaseUrl}/rest/v1/orders?user_email=not.is.null&select=user_email`,
+          {
+            headers: {
+              "apikey": supabaseKey,
+              "Authorization": `Bearer ${supabaseKey}`,
+            },
+          }
+        );
+        const ordersWithEmails = await emailsResponse.json();
+        
+        // Get unique emails
+        const uniqueEmails = [...new Set(
+          (ordersWithEmails || [])
+            .map((o: any) => o.user_email)
+            .filter((email: string | null) => email && email.includes('@'))
+        )];
+
+        if (uniqueEmails.length === 0) {
+          throw new Error("No valid email addresses found in database");
+        }
+
+        console.log(`Sending bulk email to ${uniqueEmails.length} recipients`);
+
+        let successCount = 0;
+        let failCount = 0;
+
+        // Send emails to each recipient (fire and forget style, no waiting)
+        for (const email of uniqueEmails) {
+          try {
+            await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseKey}`,
+              },
+              body: JSON.stringify({
+                type: "bulk",
+                to: email,
+                bulkData: {
+                  subject: params.subject,
+                  message: params.message,
+                },
+              }),
+            });
+            successCount++;
+          } catch (err) {
+            console.error(`Failed to send email to ${email}:`, err);
+            failCount++;
+          }
+        }
+
+        // Log the bulk email action
+        await fetch(`${supabaseUrl}/rest/v1/logs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Prefer": "return=minimal",
+          },
+          body: JSON.stringify({
+            type: "admin",
+            message: `Bulk email sent to ${successCount} recipients by ${payload?.username}`,
+            metadata: { 
+              action: "send_bulk_email", 
+              subject: params.subject.substring(0, 50),
+              recipientCount: uniqueEmails.length,
+              successCount,
+              failCount,
+              admin: payload?.username 
+            },
+          }),
+        });
+
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            sent: successCount, 
+            failed: failCount, 
+            total: uniqueEmails.length 
+          }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          }
+        );
+      }
+
       default:
         throw new Error("Unknown action");
     }

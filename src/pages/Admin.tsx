@@ -53,8 +53,11 @@ import {
   Save,
   ToggleLeft,
   ToggleRight,
+  Mail,
+  Send,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Helmet } from "react-helmet-async";
 import { formatPrice } from "@/lib/products";
@@ -101,6 +104,11 @@ const Admin = () => {
   // Clear data dialog
   const [showClearDialog, setShowClearDialog] = useState(false);
   const [clearPassword, setClearPassword] = useState("");
+  
+  // Bulk email state
+  const [bulkEmailSubject, setBulkEmailSubject] = useState("");
+  const [bulkEmailMessage, setBulkEmailMessage] = useState("");
+  const [bulkEmailSending, setBulkEmailSending] = useState(false);
   const [clearLoading, setClearLoading] = useState(false);
 
   const [stats, setStats] = useState({
@@ -497,6 +505,41 @@ const Admin = () => {
     setClearLoading(false);
   };
 
+  const handleSendBulkEmail = async () => {
+    if (!bulkEmailSubject.trim()) {
+      toast.error("Please enter a subject");
+      return;
+    }
+    if (!bulkEmailMessage.trim()) {
+      toast.error("Please enter a message");
+      return;
+    }
+
+    setBulkEmailSending(true);
+    try {
+      const result = await invokeEdgeFunction<any>("admin-action", {
+        headers: getAdminHeaders(),
+        body: {
+          action: "send_bulk_email",
+          subject: bulkEmailSubject.trim(),
+          message: bulkEmailMessage.trim(),
+        },
+      });
+
+      if (result.success) {
+        toast.success(`Email sent to ${result.sent} recipients!`);
+        setBulkEmailSubject("");
+        setBulkEmailMessage("");
+        fetchData(); // Refresh logs
+      } else {
+        toast.error(result.error || "Failed to send emails");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send emails");
+    }
+    setBulkEmailSending(false);
+  };
+
   const getStatusBadge = (status: string) => {
     const badges: any = {
       pending: (
@@ -830,6 +873,7 @@ const Admin = () => {
               { id: "users", icon: Users, label: "Users", description: "Customer info" },
               { id: "logs", icon: FileText, label: "Logs", description: "System logs" },
               { id: "coupons", icon: Ticket, label: "Coupons", description: "Discount codes" },
+              { id: "email", icon: Mail, label: "Email", description: "Bulk messaging" },
               { id: "settings", icon: Settings, label: "Settings", description: "Configuration" },
             ].map((item) => (
               <button
@@ -876,6 +920,7 @@ const Admin = () => {
                   {activeTab === "users" && "View customer information and purchase history"}
                   {activeTab === "logs" && "System activity and event logs"}
                   {activeTab === "coupons" && "Create and manage discount codes"}
+                  {activeTab === "email" && "Send emails to all customers"}
                   {activeTab === "settings" && "Configure store settings"}
                 </p>
               </div>
@@ -1493,6 +1538,155 @@ const Admin = () => {
                         ))}
                       </TableBody>
                     </Table>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* Email */}
+            {activeTab === "email" && (
+              <div className="space-y-6 max-w-2xl">
+                <Card className="bg-card/50 backdrop-blur">
+                  <CardHeader>
+                    <CardTitle className="text-lg font-display flex items-center gap-2">
+                      <Mail className="w-5 h-5 text-primary" />
+                      Send Bulk Email
+                    </CardTitle>
+                    <CardDescription>
+                      Send an email to all customers who have made purchases (emails stored in database)
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label className="text-sm text-muted-foreground">Subject</Label>
+                      <Input
+                        placeholder="🎉 Special Announcement!"
+                        value={bulkEmailSubject}
+                        onChange={(e) => setBulkEmailSubject(e.target.value)}
+                        className="bg-background/50"
+                        maxLength={200}
+                      />
+                      <p className="text-xs text-muted-foreground">{bulkEmailSubject.length}/200 characters</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-sm text-muted-foreground">Message (HTML supported)</Label>
+                      <Textarea
+                        placeholder="<h2>Hey there!</h2><p>We have exciting news for you...</p>"
+                        value={bulkEmailMessage}
+                        onChange={(e) => setBulkEmailMessage(e.target.value)}
+                        className="bg-background/50 min-h-[200px] font-mono text-sm"
+                        maxLength={10000}
+                      />
+                      <p className="text-xs text-muted-foreground">{bulkEmailMessage.length}/10000 characters</p>
+                    </div>
+                    
+                    <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                      <div className="flex items-start gap-3">
+                        <Mail className="w-5 h-5 text-blue-400 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium text-blue-400">Preview Note</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            The email will be wrapped in a branded template with the Axis Economy Store header and footer.
+                            You can use HTML tags like &lt;h2&gt;, &lt;p&gt;, &lt;strong&gt;, &lt;a href="..."&gt;, etc.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-4">
+                      <div className="text-sm text-muted-foreground">
+                        Emails will be sent to all customers with saved email addresses
+                      </div>
+                      <Button 
+                        onClick={handleSendBulkEmail} 
+                        disabled={bulkEmailSending || !bulkEmailSubject.trim() || !bulkEmailMessage.trim()}
+                        className="gap-2"
+                      >
+                        {bulkEmailSending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Sending...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-4 h-4" />
+                            Send to All Customers
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-card/50 backdrop-blur">
+                  <CardHeader>
+                    <CardTitle className="text-lg font-display flex items-center gap-2">
+                      <FileText className="w-5 h-5 text-primary" />
+                      Email Templates
+                    </CardTitle>
+                    <CardDescription>
+                      Quick templates for common announcements
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <Button 
+                      variant="outline" 
+                      className="w-full justify-start text-left h-auto py-3"
+                      onClick={() => {
+                        setBulkEmailSubject("🔥 Flash Sale - Limited Time Only!");
+                        setBulkEmailMessage(`<h2 style="color: #10b981;">⚡ Flash Sale Alert!</h2>
+<p>Hey there, fellow player!</p>
+<p>For the next <strong>24 hours only</strong>, we're running an exclusive flash sale!</p>
+<p>🎁 <strong>Get 20% OFF</strong> on all ranks and crates!</p>
+<p>Don't miss out - this deal won't last!</p>
+<p><a href="https://axis-sparkle-store.lovable.app/store" style="color: #10b981; font-weight: bold;">👉 Shop Now</a></p>`);
+                      }}
+                    >
+                      <div>
+                        <div className="font-medium">🔥 Flash Sale</div>
+                        <div className="text-xs text-muted-foreground">Announce a limited-time discount</div>
+                      </div>
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      className="w-full justify-start text-left h-auto py-3"
+                      onClick={() => {
+                        setBulkEmailSubject("🎮 New Items Just Dropped!");
+                        setBulkEmailMessage(`<h2 style="color: #10b981;">🎮 New Arrivals!</h2>
+<p>Hey champion!</p>
+<p>We've just added some <strong>awesome new items</strong> to our store!</p>
+<ul>
+<li>✨ New exclusive ranks</li>
+<li>🎁 Special crate keys</li>
+<li>💰 Better money packs</li>
+</ul>
+<p>Be the first to check them out!</p>
+<p><a href="https://axis-sparkle-store.lovable.app/store" style="color: #10b981; font-weight: bold;">👉 Explore Now</a></p>`);
+                      }}
+                    >
+                      <div>
+                        <div className="font-medium">🎮 New Items</div>
+                        <div className="text-xs text-muted-foreground">Announce new products or updates</div>
+                      </div>
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      className="w-full justify-start text-left h-auto py-3"
+                      onClick={() => {
+                        setBulkEmailSubject("📢 Important Server Announcement");
+                        setBulkEmailMessage(`<h2 style="color: #f59e0b;">📢 Important Update</h2>
+<p>Hello player!</p>
+<p>We have an important announcement for our community:</p>
+<p><strong>[Your announcement here]</strong></p>
+<p>Thank you for being part of the Axis Economy community!</p>
+<p>See you in-game! 🎮</p>`);
+                      }}
+                    >
+                      <div>
+                        <div className="font-medium">📢 Announcement</div>
+                        <div className="text-xs text-muted-foreground">General server announcement template</div>
+                      </div>
+                    </Button>
                   </CardContent>
                 </Card>
               </div>

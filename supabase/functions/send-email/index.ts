@@ -6,8 +6,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
+// Google Apps Script Web App URL
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzEh77d-0DaOvbT7ZEmoy3OPo-2VWfJK4KFts3EfTwv5H_kcc7fNLcdJ5aGBpkAYC2i/exec";
+
 interface EmailRequest {
-  type: "receipt" | "failed" | "expiry_reminder";
+  type: "receipt" | "failed" | "expiry_reminder" | "bulk";
   to: string;
   orderData?: {
     orderId: string;
@@ -22,6 +25,10 @@ interface EmailRequest {
     minecraftUsername: string;
     daysLeft: number;
     expiresAt: string;
+  };
+  bulkData?: {
+    subject: string;
+    message: string;
   };
 }
 
@@ -55,31 +62,34 @@ async function logEmailEvent(
   }
 }
 
-// Send email via Resend API
-async function sendViaResend(apiKey: string, to: string, subject: string, html: string): Promise<{ success: boolean; id?: string; error?: string }> {
+// Send email via Google Apps Script (fire and forget - don't wait)
+async function sendViaAppsScript(to: string, subject: string, message: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const response = await fetch("https://api.resend.com/emails", {
+    console.log("Sending email via Apps Script to:", to);
+    console.log("Subject:", subject);
+    
+    const response = await fetch(APPS_SCRIPT_URL, {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "Axis Economy Store <onboarding@resend.dev>",
-        to: [to],
+        to,
         subject,
-        html,
+        message,
       }),
     });
 
-    const data = await response.json();
+    const responseText = await response.text();
+    console.log("Apps Script response:", responseText);
 
-    if (!response.ok) {
-      return { success: false, error: data.message || `HTTP ${response.status}` };
+    if (responseText === "OK") {
+      return { success: true };
+    } else {
+      return { success: false, error: responseText };
     }
-
-    return { success: true, id: data.id };
   } catch (err: any) {
+    console.error("Apps Script error:", err);
     return { success: false, error: err.message || String(err) };
   }
 }
@@ -93,23 +103,15 @@ serve(async (req) => {
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
   try {
-    const { type, to, orderData, expiryData }: EmailRequest = await req.json();
+    const { type, to, orderData, expiryData, bulkData }: EmailRequest = await req.json();
 
-    const resendApiKey = Deno.env.get("RESEND_API_KEY");
-
-    console.log("Email request:", { type, to, hasOrderData: !!orderData, hasExpiryData: !!expiryData });
-
-    if (!resendApiKey) {
-      console.error("RESEND_API_KEY not configured");
-      await logEmailEvent(supabaseUrl, serviceRoleKey, type, to, false, "RESEND_API_KEY not configured");
-      throw new Error("Email service not configured");
-    }
+    console.log("Email request:", { type, to, hasOrderData: !!orderData, hasExpiryData: !!expiryData, hasBulkData: !!bulkData });
 
     let subject = "";
     let html = "";
 
     if (type === "receipt" && orderData) {
-      subject = `✅ Payment Confirmed - ${orderData.productName}`;
+      subject = `✅ Purchase Confirmed - ${orderData.productName}`;
       html = `
         <!DOCTYPE html>
         <html>
@@ -138,12 +140,12 @@ serve(async (req) => {
               <div class="logo">⚔️ Axis Economy Store</div>
             </div>
             <div class="card">
-              <div class="success-badge">✓ Payment Successful</div>
+              <div class="success-badge">✓ Purchase Successful</div>
               <h1>Thank you for your purchase!</h1>
-              <p style="color: #a1a1aa; margin-bottom: 24px;">Your order has been confirmed and delivered.</p>
+              <p style="color: #a1a1aa; margin-bottom: 24px;">Your purchase has been confirmed and delivered.</p>
               
               <div class="detail-row">
-                <span class="label">Order ID</span>
+                <span class="label">Purchase ID</span>
                 <span class="value" style="font-family: monospace;">${orderData.orderId}</span>
               </div>
               <div class="detail-row">
@@ -177,7 +179,7 @@ serve(async (req) => {
         </html>
       `;
     } else if (type === "failed" && orderData) {
-      subject = `❌ Payment Failed - ${orderData.productName}`;
+      subject = `❌ Purchase Failed - ${orderData.productName}`;
       html = `
         <!DOCTYPE html>
         <html>
@@ -202,12 +204,12 @@ serve(async (req) => {
               <div class="logo">⚔️ Axis Economy Store</div>
             </div>
             <div class="card">
-              <div class="failed-badge">✗ Payment Failed</div>
+              <div class="failed-badge">✗ Purchase Failed</div>
               <h1>Your payment could not be processed</h1>
               <p style="color: #a1a1aa; margin-bottom: 24px;">Don't worry - no money was deducted from your account.</p>
               
               <div class="detail-row">
-                <span class="label">Order ID</span>
+                <span class="label">Purchase ID</span>
                 <span class="value" style="font-family: monospace;">${orderData.orderId}</span>
               </div>
               <div class="detail-row">
@@ -226,7 +228,7 @@ serve(async (req) => {
         </html>
       `;
     } else if (type === "expiry_reminder" && expiryData) {
-      subject = `⏰ Your ${expiryData.rankName} Rank expires in ${expiryData.daysLeft} days!`;
+      subject = `😢 Missing Your ${expiryData.rankName} Rank? Only ${expiryData.daysLeft} Days Left!`;
       html = `
         <!DOCTYPE html>
         <html>
@@ -239,10 +241,82 @@ serve(async (req) => {
             .card { background: #18181b; border-radius: 16px; padding: 32px; margin-bottom: 24px; border: 1px solid #27272a; }
             .warning-badge { display: inline-block; background: rgba(245, 158, 11, 0.2); color: #f59e0b; padding: 8px 16px; border-radius: 9999px; font-weight: 600; margin-bottom: 24px; }
             h1 { margin: 0 0 16px; font-size: 24px; }
-            .countdown { font-size: 48px; font-weight: bold; color: #f59e0b; text-align: center; margin: 24px 0; }
+            .countdown { font-size: 64px; font-weight: bold; color: #f59e0b; text-align: center; margin: 24px 0; }
+            .countdown-label { text-align: center; color: #a1a1aa; margin-bottom: 24px; font-size: 18px; }
             .detail-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #27272a; }
             .label { color: #a1a1aa; }
             .value { font-weight: 600; }
+            .cta-button { display: block; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; text-align: center; padding: 16px 32px; border-radius: 12px; font-weight: 700; font-size: 18px; text-decoration: none; margin-top: 24px; }
+            .benefits { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.2); border-radius: 12px; padding: 20px; margin-top: 24px; }
+            .benefits-title { color: #10b981; font-weight: 600; margin-bottom: 12px; font-size: 16px; }
+            .benefit-item { color: #a1a1aa; padding: 6px 0; }
+            .footer { text-align: center; color: #71717a; font-size: 12px; margin-top: 40px; }
+            .sad-emoji { font-size: 48px; text-align: center; margin-bottom: 16px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <div class="logo">⚔️ Axis Economy Store</div>
+            </div>
+            <div class="card">
+              <div class="sad-emoji">😢</div>
+              <div class="warning-badge">⏰ Time is Running Out!</div>
+              <h1>Hey ${expiryData.minecraftUsername}!</h1>
+              <p style="color: #a1a1aa; margin-bottom: 8px;">Your <strong style="color: #10b981;">${expiryData.rankName}</strong> rank is about to expire...</p>
+              
+              <div class="countdown">${expiryData.daysLeft}</div>
+              <div class="countdown-label">days left until you lose your perks! 💔</div>
+              
+              <div class="detail-row">
+                <span class="label">Rank</span>
+                <span class="value" style="color: #10b981;">${expiryData.rankName}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Player</span>
+                <span class="value">${expiryData.minecraftUsername}</span>
+              </div>
+              <div class="detail-row">
+                <span class="label">Expires On</span>
+                <span class="value" style="color: #f59e0b;">${new Date(expiryData.expiresAt).toLocaleDateString()}</span>
+              </div>
+              
+              <div class="benefits">
+                <div class="benefits-title">🎮 Don't miss out on these perks:</div>
+                <div class="benefit-item">✨ Exclusive commands & abilities</div>
+                <div class="benefit-item">🎁 Special in-game rewards</div>
+                <div class="benefit-item">⚡ Priority access & bonuses</div>
+                <div class="benefit-item">👑 VIP status in the community</div>
+              </div>
+              
+              <a href="https://axis-sparkle-store.lovable.app/store" class="cta-button">
+                🔥 Renew Now & Keep Your Perks! 🔥
+              </a>
+              
+              <p style="color: #71717a; text-align: center; margin-top: 16px; font-size: 14px;">
+                We'd hate to see you go! Renew today and continue dominating. 💪
+              </p>
+            </div>
+            <div class="footer">
+              <p>© 2024 Axis Economy Store. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+    } else if (type === "bulk" && bulkData) {
+      subject = bulkData.subject;
+      html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background: #0a0a0b; color: #ffffff; }
+            .container { max-width: 600px; margin: 0 auto; padding: 40px 20px; }
+            .header { text-align: center; margin-bottom: 40px; }
+            .logo { font-size: 28px; font-weight: bold; color: #10b981; }
+            .card { background: #18181b; border-radius: 16px; padding: 32px; margin-bottom: 24px; border: 1px solid #27272a; }
+            .content { color: #e5e5e5; line-height: 1.6; }
             .footer { text-align: center; color: #71717a; font-size: 12px; margin-top: 40px; }
           </style>
         </head>
@@ -252,25 +326,9 @@ serve(async (req) => {
               <div class="logo">⚔️ Axis Economy Store</div>
             </div>
             <div class="card">
-              <div class="warning-badge">⏰ Expiry Reminder</div>
-              <h1>Your rank is expiring soon!</h1>
-              
-              <div class="countdown">${expiryData.daysLeft} days left</div>
-              
-              <div class="detail-row">
-                <span class="label">Rank</span>
-                <span class="value">${expiryData.rankName}</span>
+              <div class="content">
+                ${bulkData.message}
               </div>
-              <div class="detail-row">
-                <span class="label">Player</span>
-                <span class="value">${expiryData.minecraftUsername}</span>
-              </div>
-              <div class="detail-row">
-                <span class="label">Expires On</span>
-                <span class="value">${new Date(expiryData.expiresAt).toLocaleDateString()}</span>
-              </div>
-              
-              <p style="color: #a1a1aa; margin-top: 24px; text-align: center;">Renew your rank to keep enjoying your perks!</p>
             </div>
             <div class="footer">
               <p>© 2024 Axis Economy Store. All rights reserved.</p>
@@ -289,21 +347,21 @@ serve(async (req) => {
     console.log("Sending email with subject:", subject);
     console.log("To:", to);
 
-    // Send via Resend API
-    const result = await sendViaResend(resendApiKey, to, subject, html);
+    // Send via Google Apps Script
+    const result = await sendViaAppsScript(to, subject, html);
 
-    console.log("Resend result:", result);
+    console.log("Apps Script result:", result);
 
     if (!result.success) {
-      console.error("Resend error:", result.error);
-      await logEmailEvent(supabaseUrl, serviceRoleKey, type, to, false, result.error || "Resend API error", orderData?.orderId);
+      console.error("Apps Script error:", result.error);
+      await logEmailEvent(supabaseUrl, serviceRoleKey, type, to, false, result.error || "Apps Script error", orderData?.orderId);
       throw new Error(result.error || "Failed to send email");
     }
 
     // Log success
-    await logEmailEvent(supabaseUrl, serviceRoleKey, type, to, true, `Email sent via Resend. ID: ${result.id}`, orderData?.orderId);
+    await logEmailEvent(supabaseUrl, serviceRoleKey, type, to, true, "Email sent via Google Apps Script", orderData?.orderId);
 
-    return new Response(JSON.stringify({ success: true, messageId: result.id }), {
+    return new Response(JSON.stringify({ success: true }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });
