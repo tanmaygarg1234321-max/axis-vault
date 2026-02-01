@@ -36,7 +36,7 @@ export const ranks: Rank[] = [
       "5 home slots",
       "Priority queue access"
     ],
-    color: "from-slate-400 to-slate-600",
+    color: "from-cyan-400 to-teal-600",
     duration: "30 Days",
     command: "stranger"
   },
@@ -70,7 +70,7 @@ export const ranks: Rank[] = [
       "VIP Discord role",
       "Priority support"
     ],
-    color: "from-violet-500 to-purple-700",
+    color: "from-amber-400 to-orange-600",
     duration: "30 Days",
     command: "amethyst"
   }
