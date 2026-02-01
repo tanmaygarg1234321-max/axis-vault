@@ -26,139 +26,88 @@ export interface MoneyPackage {
 
 export const ranks: Rank[] = [
   {
-    id: "warden",
-    name: "Warden",
-    price: 105,
+    id: "stranger",
+    name: "Stranger",
+    price: 69,
     perks: [
       "Access to /fly command",
-      "/kit warden daily",
-      "Green name prefix",
+      "/kit stranger daily",
+      "Custom name prefix",
       "5 home slots",
       "Priority queue access"
     ],
-    color: "from-emerald-500 to-emerald-600",
+    color: "from-slate-400 to-slate-600",
     duration: "30 Days",
-    command: "warden"
-  },
-  {
-    id: "revenant",
-    name: "Revenant",
-    price: 165,
-    perks: [
-      "All Warden perks",
-      "/kit revenant daily",
-      "Blue name prefix",
-      "10 home slots",
-      "/heal command (30m cooldown)",
-      "Colored chat messages"
-    ],
-    color: "from-blue-500 to-cyan-500",
-    duration: "30 Days",
-    command: "revenant"
+    command: "stranger"
   },
   {
     id: "mythic",
     name: "Mythic",
-    price: 210,
+    price: 120,
     perks: [
-      "All Revenant perks",
+      "All Stranger perks",
       "/kit mythic daily",
       "Purple name prefix",
-      "15 home slots",
-      "/feed command",
-      "Custom join messages"
+      "10 home slots",
+      "/heal command",
+      "Colored chat messages"
     ],
     color: "from-purple-500 to-violet-600",
     duration: "30 Days",
     command: "mythic"
   },
   {
-    id: "void",
-    name: "Void",
-    price: 310,
+    id: "amethyst",
+    name: "Amethyst",
+    price: 167,
     perks: [
       "All Mythic perks",
-      "/kit void daily",
-      "Dark purple prefix",
-      "20 home slots",
+      "/kit amethyst daily",
+      "Amethyst name prefix",
+      "Unlimited homes",
       "/enderchest anywhere",
       "/workbench anywhere",
-      "Pet access"
-    ],
-    color: "from-indigo-600 to-purple-800",
-    duration: "30 Days",
-    command: "void"
-  },
-  {
-    id: "astix",
-    name: "Astix",
-    price: 520,
-    perks: [
-      "All Void perks",
-      "/kit astix daily",
-      "Golden animated prefix",
-      "Unlimited homes",
-      "/nick command",
-      "Exclusive cosmetics",
       "VIP Discord role",
       "Priority support"
     ],
-    color: "from-yellow-400 to-amber-600",
+    color: "from-violet-500 to-purple-700",
     duration: "30 Days",
-    command: "astix"
+    command: "amethyst"
   }
 ];
 
 export const crates: Crate[] = [
   {
-    id: "astix-crate",
-    name: "Astix Crate",
-    price: 210,
-    description:
-      "Ultimate tier rewards including legendary gear, rare enchants, and exclusive cosmetics",
-    color: "from-yellow-400 to-amber-600",
-    command: "astix",
-  },
-  {
-    id: "void-crate",
-    name: "Void Crate",
-    price: 155,
-    description: "High-tier loot with powerful enchantments and rare materials",
-    color: "from-indigo-600 to-purple-800",
-    command: "void",
-  },
-  {
-    id: "mythic-crate",
-    name: "Mythic Crate",
-    price: 95,
-    description: "Mid-tier rewards with rare enchants, gear and cosmetics",
-    color: "from-purple-500 to-violet-600",
-    command: "mythic",
-  },
-  {
-    id: "spawner-crate",
-    name: "Spawner Crate",
-    price: 365,
-    description:
-      "Random spawner drops including rare mob types and custom spawners",
-    color: "from-red-500 to-orange-600",
-    command: "spawner",
+    id: "keyall-crate",
+    name: "Keyall Crate",
+    price: 10,
+    description: "A bundle of random keys for all crate types on the server",
+    color: "from-cyan-500 to-blue-500",
+    command: "keyall",
   },
   {
     id: "money-crate",
     name: "Money Crate",
-    price: 465,
+    price: 20,
     description: "Guaranteed in-game currency rewards ranging from 100K to 10M",
     color: "from-green-500 to-emerald-600",
     command: "money",
   },
   {
-    id: "keyall-crate",
-    name: "Keyall Crate",
-    price: 90,
-    description: "A bundle of random keys for all crate types on the server",
-    color: "from-cyan-500 to-blue-500",
-    command: "keyall",
+    id: "astro-crate",
+    name: "Astro Crate",
+    price: 35,
+    description: "Cosmic rewards with rare enchants, gear and exclusive cosmetics",
+    color: "from-indigo-500 to-blue-700",
+    command: "astro",
+  },
+  {
+    id: "moon-crate",
+    name: "Moon Crate",
+    price: 40,
+    description: "Ultimate tier rewards including legendary gear and rare materials",
+    color: "from-slate-300 to-slate-500",
+    command: "moon",
   },
 ];
 

@@ -89,7 +89,7 @@ const Store = () => {
                     <RankCard
                       key={rank.id}
                       rank={rank}
-                      featured={rank.id === "mythic"}
+                      featured={rank.id === "amethyst"}
                     />
                   ))}
                 </div>
