@@ -15,12 +15,16 @@ export async function invokeEdgeFunction<T = unknown>(
   functionName: string,
   options: InvokeOptions = {}
 ): Promise<T> {
-  const baseUrl = import.meta.env.VITE_SUPABASE_URL;
+  // Support custom API URL for VPS deployment, fallback to Supabase URL
+  const baseUrl = import.meta.env.VITE_API_URL || import.meta.env.VITE_SUPABASE_URL;
   const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-  if (!baseUrl || !publishableKey) {
+  if (!baseUrl) {
     throw new Error("Backend environment is not configured");
   }
+
+  // publishableKey is optional when using custom API URL
+  const useApiKey = !!publishableKey;
 
   const {
     body,
@@ -34,8 +38,11 @@ export async function invokeEdgeFunction<T = unknown>(
     method,
     headers: {
       "Content-Type": "application/json",
-      apikey: publishableKey,
-      Authorization: `Bearer ${authToken ?? publishableKey}`,
+      // Only include apikey/Authorization if we have a publishableKey
+      ...(useApiKey ? {
+        apikey: publishableKey,
+        Authorization: `Bearer ${authToken ?? publishableKey}`,
+      } : {}),
       ...(headers ?? {}),
     },
     body: body === undefined ? undefined : JSON.stringify(body),
