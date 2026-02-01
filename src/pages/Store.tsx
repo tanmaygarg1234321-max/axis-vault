@@ -9,9 +9,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Crown, Package, Coins } from "lucide-react";
 import { ranks, crates, moneyPackages } from "@/lib/products";
 import { Helmet } from "react-helmet-async";
+import { usePopularRank } from "@/hooks/usePopularRank";
 
 const Store = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { popularRankId } = usePopularRank();
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "ranks");
 
   useEffect(() => {
@@ -85,11 +87,11 @@ const Store = () => {
                   </p>
                 </div>
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
-                  {ranks.map((rank, index) => (
+                  {ranks.map((rank) => (
                     <RankCard
                       key={rank.id}
                       rank={rank}
-                      featured={rank.id === "amethyst"}
+                      featured={popularRankId === rank.id}
                     />
                   ))}
                 </div>
