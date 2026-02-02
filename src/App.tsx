@@ -6,8 +6,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { HelmetProvider } from "react-helmet-async";
 import { supabase } from "@/integrations/supabase/client";
+import { CartProvider } from "@/contexts/CartContext";
 import Index from "./pages/Index";
 import Store from "./pages/Store";
+import Cart from "./pages/Cart";
 import Checkout from "./pages/Checkout";
 import PaymentStatus from "./pages/PaymentStatus";
 import Terms from "./pages/Terms";
@@ -101,6 +103,7 @@ const AppRoutes = () => (
       <Route path="/" element={<Index />} />
       <Route path="/auth" element={<Auth />} />
       <Route path="/store" element={<Store />} />
+      <Route path="/cart" element={<Cart />} />
       <Route path="/checkout" element={<Checkout />} />
       <Route path="/payment-status" element={<PaymentStatus />} />
       <Route path="/terms" element={<Terms />} />
@@ -120,11 +123,13 @@ const App = () => (
   <HelmetProvider>
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
+        <CartProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </CartProvider>
       </TooltipProvider>
     </QueryClientProvider>
   </HelmetProvider>

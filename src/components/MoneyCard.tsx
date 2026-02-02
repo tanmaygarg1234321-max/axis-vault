@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
-import { Coins, Zap } from "lucide-react";
+import { Coins, Zap, ShoppingCart } from "lucide-react";
 import { MoneyPackage, formatPrice } from "@/lib/products";
-import { Link } from "react-router-dom";
+import { useCart } from "@/contexts/CartContext";
 
 interface MoneyCardProps {
   package_: MoneyPackage;
@@ -9,6 +9,8 @@ interface MoneyCardProps {
 }
 
 const MoneyCard = ({ package_, popular = false }: MoneyCardProps) => {
+  const { addToCart } = useCart();
+
   return (
     <div
       className={`glass-card p-4 group hover:border-primary/50 transition-all duration-300 ${
@@ -43,10 +45,14 @@ const MoneyCard = ({ package_, popular = false }: MoneyCardProps) => {
         <span>Instant delivery</span>
       </div>
 
-      <Button asChild variant="hero" size="sm" className="w-full">
-        <Link to={`/checkout?type=money&id=${package_.id}`}>
-          Buy {package_.amount}
-        </Link>
+      <Button
+        variant="hero"
+        size="sm"
+        className="w-full"
+        onClick={() => addToCart("money", package_.id)}
+      >
+        <ShoppingCart className="w-4 h-4 mr-1" />
+        Add to Cart
       </Button>
     </div>
   );

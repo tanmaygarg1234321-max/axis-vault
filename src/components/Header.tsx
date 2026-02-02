@@ -1,8 +1,9 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Crown, Menu, X, User, ShoppingBag, LogOut } from "lucide-react";
+import { Crown, Menu, X, User, ShoppingBag, LogOut, ShoppingCart } from "lucide-react";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useCart } from "@/contexts/CartContext";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,11 +11,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
 
 const Header = () => {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
+  const { getCartCount } = useCart();
+  const cartCount = getCartCount();
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -55,7 +63,7 @@ const Header = () => {
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-6">
+          <nav className={`hidden md:flex items-center gap-6 ${user ? 'ml-4' : ''}`}>
             {navLinks.map((link) => (
               <Link
                 key={link.to}
@@ -81,28 +89,56 @@ const Header = () => {
 
           {/* CTA + User Buttons */}
           <div className="hidden md:flex items-center gap-3">
+            {/* Cart Button */}
+            <Button asChild variant="outline" size="sm" className="relative">
+              <Link to="/cart">
+                <ShoppingCart className="w-4 h-4" />
+                {cartCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-primary text-primary-foreground text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">
+                    {cartCount > 9 ? "9+" : cartCount}
+                  </span>
+                )}
+              </Link>
+            </Button>
+
             {user ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <User className="w-4 h-4" />
-                    {user.email?.split('@')[0]}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
-                  <DropdownMenuItem asChild>
-                    <Link to="/purchases" className="flex items-center gap-2 cursor-pointer">
-                      <ShoppingBag className="w-4 h-4" />
-                      My Purchases
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={handleSignOut} className="flex items-center gap-2 cursor-pointer text-red-400">
-                    <LogOut className="w-4 h-4" />
-                    Sign Out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <HoverCard openDelay={0} closeDelay={100}>
+                <HoverCardTrigger asChild>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm" className="gap-2 max-w-[140px]">
+                        <User className="w-4 h-4 shrink-0" />
+                        <span className="truncate">
+                          {user.email?.split('@')[0].substring(0, 10)}
+                          {user.email?.split('@')[0].length > 10 ? '...' : ''}
+                        </span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuItem asChild>
+                        <Link to="/purchases" className="flex items-center gap-2 cursor-pointer">
+                          <ShoppingBag className="w-4 h-4" />
+                          My Purchases
+                        </Link>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={handleSignOut} className="flex items-center gap-2 cursor-pointer text-red-400">
+                        <LogOut className="w-4 h-4" />
+                        Sign Out
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </HoverCardTrigger>
+                <HoverCardContent className="w-64" side="bottom" align="end">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-foreground">Account Details</p>
+                    <div className="text-sm text-muted-foreground space-y-1">
+                      <p><span className="font-medium">Username:</span> {user.email?.split('@')[0]}</p>
+                      <p className="break-all"><span className="font-medium">Email:</span> {user.email}</p>
+                    </div>
+                  </div>
+                </HoverCardContent>
+              </HoverCard>
             ) : (
               <Button asChild variant="outline" size="sm">
                 <Link to="/auth">
@@ -151,8 +187,19 @@ const Header = () => {
               >
                 Discord
               </a>
+              <Link
+                to="/cart"
+                onClick={() => setMobileMenuOpen(false)}
+                className="font-display text-sm tracking-wide uppercase text-muted-foreground hover:text-foreground transition-colors flex items-center gap-2"
+              >
+                <ShoppingCart className="w-4 h-4" />
+                Cart {cartCount > 0 && `(${cartCount})`}
+              </Link>
               {user ? (
                 <>
+                  <div className="text-xs text-muted-foreground py-2 border-t border-border/50">
+                    <p>Logged in as: <span className="text-primary">{user.email}</span></p>
+                  </div>
                   <Link
                     to="/purchases"
                     onClick={() => setMobileMenuOpen(false)}

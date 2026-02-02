@@ -1,9 +1,9 @@
 import { Button } from "@/components/ui/button";
-import { Package, Eye, Zap } from "lucide-react";
+import { Package, Eye, Zap, ShoppingCart } from "lucide-react";
 import { Crate, formatPrice } from "@/lib/products";
-import { Link } from "react-router-dom";
 import { useState } from "react";
 import PreviewModal from "./PreviewModal";
+import { useCart } from "@/contexts/CartContext";
 
 interface CrateCardProps {
   crate: Crate;
@@ -11,6 +11,7 @@ interface CrateCardProps {
 
 const CrateCard = ({ crate }: CrateCardProps) => {
   const [previewOpen, setPreviewOpen] = useState(false);
+  const { addToCart } = useCart();
 
   return (
     <>
@@ -56,10 +57,14 @@ const CrateCard = ({ crate }: CrateCardProps) => {
               <Eye className="w-4 h-4 mr-1" />
               Preview
             </Button>
-            <Button asChild variant="hero" size="sm" className="flex-1">
-              <Link to={`/checkout?type=crate&id=${crate.id}`}>
-                Buy Now
-              </Link>
+            <Button
+              variant="hero"
+              size="sm"
+              className="flex-1"
+              onClick={() => addToCart("crate", crate.id)}
+            >
+              <ShoppingCart className="w-4 h-4 mr-1" />
+              Add to Cart
             </Button>
           </div>
         </div>
