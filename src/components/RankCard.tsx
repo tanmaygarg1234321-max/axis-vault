@@ -1,9 +1,9 @@
 import { Button } from "@/components/ui/button";
-import { Check, Eye, Clock } from "lucide-react";
+import { Check, Eye, Clock, ShoppingCart } from "lucide-react";
 import { Rank, formatPrice } from "@/lib/products";
-import { Link } from "react-router-dom";
 import { useState } from "react";
 import PreviewModal from "./PreviewModal";
+import { useCart } from "@/contexts/CartContext";
 
 interface RankCardProps {
   rank: Rank;
@@ -12,6 +12,8 @@ interface RankCardProps {
 
 const RankCard = ({ rank, featured = false }: RankCardProps) => {
   const [previewOpen, setPreviewOpen] = useState(false);
+  const { addToCart, hasRankInCart } = useCart();
+  const rankInCart = hasRankInCart();
 
   return (
     <>
@@ -76,10 +78,16 @@ const RankCard = ({ rank, featured = false }: RankCardProps) => {
               <Eye className="w-4 h-4 mr-1" />
               Preview
             </Button>
-            <Button asChild variant="hero" size="sm" className="flex-1">
-              <Link to={`/checkout?type=rank&id=${rank.id}`}>
-                Buy Now
-              </Link>
+            <Button
+              variant="hero"
+              size="sm"
+              className="flex-1"
+              onClick={() => addToCart("rank", rank.id)}
+              disabled={rankInCart}
+              title={rankInCart ? "You already have a rank in your cart" : undefined}
+            >
+              <ShoppingCart className="w-4 h-4 mr-1" />
+              {rankInCart ? "Rank in Cart" : "Add to Cart"}
             </Button>
           </div>
         </div>

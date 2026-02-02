@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
-import { useSearchParams, useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ranks, crates, moneyPackages, formatPrice } from "@/lib/products";
-import { Shield, Package, Clock, CreditCard, User, MessageCircle, Gift, ArrowLeft, Loader2, LogIn } from "lucide-react";
+import { formatPrice } from "@/lib/products";
+import { useCart } from "@/contexts/CartContext";
+import { Shield, Package, Clock, CreditCard, User, MessageCircle, Gift, ArrowLeft, Loader2, LogIn, Crown, Coins } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { Helmet } from "react-helmet-async";
@@ -19,10 +20,8 @@ declare global {
 }
 
 const Checkout = () => {
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const type = searchParams.get("type");
-  const id = searchParams.get("id");
+  const { getSelectedItems, getSelectedTotal, clearCart, getProductName, getProduct } = useCart();
 
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -33,6 +32,9 @@ const Checkout = () => {
   const [loading, setLoading] = useState(false);
   const [couponCode, setCouponCode] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<any>(null);
+
+  const selectedItems = getSelectedItems();
+  const cartTotal = getSelectedTotal();
 
   // Check auth
   useEffect(() => {
@@ -49,38 +51,13 @@ const Checkout = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Get product info
-  let product: any = null;
-  let productName = "";
-  let productPrice = 0;
-
-  if (type === "rank") {
-    product = ranks.find((r) => r.id === id);
-    if (product) {
-      productName = `${product.name} Rank`;
-      productPrice = product.price;
-    }
-  } else if (type === "crate") {
-    product = crates.find((c) => c.id === id);
-    if (product) {
-      productName = product.name;
-      productPrice = product.price;
-    }
-  } else if (type === "money") {
-    product = moneyPackages.find((m) => m.id === id);
-    if (product) {
-      productName = `${product.amount} In-Game Money`;
-      productPrice = product.price;
-    }
-  }
-
   // Calculate final price with coupon
   const calculateFinalPrice = () => {
-    if (!appliedCoupon) return productPrice;
+    if (!appliedCoupon) return cartTotal;
     if (appliedCoupon.type === "flat") {
-      return Math.max(0, productPrice - appliedCoupon.value);
+      return Math.max(0, cartTotal - appliedCoupon.value);
     } else {
-      return Math.round(productPrice * (1 - appliedCoupon.value / 100));
+      return Math.round(cartTotal * (1 - appliedCoupon.value / 100));
     }
   };
 
@@ -136,15 +113,26 @@ const Checkout = () => {
       return;
     }
 
+    if (selectedItems.length === 0) {
+      toast.error("No items selected for checkout");
+      return;
+    }
+
     setLoading(true);
 
     try {
+      // Build cart items for order
+      const cartItemsForOrder = selectedItems.map(item => ({
+        type: item.type,
+        productId: item.productId,
+        quantity: item.quantity,
+        name: getProductName(item.type, item.productId),
+      }));
+
       // Create order via edge function
       const { data, error } = await supabase.functions.invoke("create-order", {
         body: {
-          productType: type,
-          productId: id,
-          productName,
+          cartItems: cartItemsForOrder,
           amount: finalPrice,
           minecraftUsername: minecraftUsername.trim(),
           discordUsername: discordUsername.trim() || "Not provided",
@@ -159,13 +147,18 @@ const Checkout = () => {
 
       const { razorpayOrderId, orderId, razorpayKeyId } = data;
 
+      // Build product name for Razorpay
+      const productDescription = selectedItems.length === 1
+        ? getProductName(selectedItems[0].type, selectedItems[0].productId)
+        : `${selectedItems.length} items from Axis Store`;
+
       // Open Razorpay checkout
       const options = {
         key: razorpayKeyId,
         amount: finalPrice * 100,
         currency: "INR",
         name: "Axis Economy Store",
-        description: productName,
+        description: productDescription,
         order_id: razorpayOrderId,
         prefill: {
           name: minecraftUsername,
@@ -185,6 +178,8 @@ const Checkout = () => {
           if (verifyError) {
             navigate(`/payment-status?status=failed&order=${orderId}`);
           } else {
+            // Clear cart on successful payment
+            clearCart();
             navigate(`/payment-status?status=success&order=${orderId}`);
           }
         },
@@ -207,6 +202,12 @@ const Checkout = () => {
     }
   };
 
+  const getItemIcon = (type: string) => {
+    if (type === "rank") return <Crown className="w-4 h-4 text-amber-400" />;
+    if (type === "crate") return <Package className="w-4 h-4 text-blue-400" />;
+    return <Coins className="w-4 h-4 text-yellow-400" />;
+  };
+
   if (authLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -215,15 +216,17 @@ const Checkout = () => {
     );
   }
 
-  if (!product) {
+  // Redirect to cart if no items selected
+  if (selectedItems.length === 0) {
     return (
       <div className="min-h-screen bg-background">
         <Header />
         <main className="pt-24 pb-20">
           <div className="container mx-auto px-4 text-center">
-            <h1 className="font-display text-2xl font-bold mb-4">Product Not Found</h1>
+            <h1 className="font-display text-2xl font-bold mb-4">No Items Selected</h1>
+            <p className="text-muted-foreground mb-6">Please select items from your cart to checkout.</p>
             <Button asChild>
-              <Link to="/store">Back to Store</Link>
+              <Link to="/cart">Go to Cart</Link>
             </Button>
           </div>
         </main>
@@ -254,15 +257,15 @@ const Checkout = () => {
                 </p>
                 <div className="space-y-3">
                   <Button asChild variant="hero" className="w-full">
-                    <Link to={`/auth?redirect=/checkout?type=${type}&id=${id}`}>
+                    <Link to="/auth?redirect=/checkout">
                       <User className="w-4 h-4" />
                       Sign In / Create Account
                     </Link>
                   </Button>
                   <Button asChild variant="outline" className="w-full">
-                    <Link to="/store">
+                    <Link to="/cart">
                       <ArrowLeft className="w-4 h-4" />
-                      Back to Store
+                      Back to Cart
                     </Link>
                   </Button>
                 </div>
@@ -289,11 +292,11 @@ const Checkout = () => {
           <div className="container mx-auto px-4 max-w-4xl">
             {/* Back button */}
             <Link
-              to="/store"
+              to="/cart"
               className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground mb-8 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
-              Back to Store
+              Back to Cart
             </Link>
 
             <div className="grid lg:grid-cols-2 gap-8">
@@ -301,38 +304,50 @@ const Checkout = () => {
               <div className="glass-card p-6">
                 <h2 className="font-display text-xl font-bold mb-6 flex items-center gap-2">
                   <Package className="w-5 h-5 text-primary" />
-                  Order Summary
+                  Order Summary ({selectedItems.length} {selectedItems.length === 1 ? 'item' : 'items'})
                 </h2>
 
-                <div className="space-y-4">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-semibold text-foreground">{productName}</p>
-                      <p className="text-sm text-muted-foreground capitalize">{type}</p>
-                    </div>
-                    <p className="font-display font-bold text-lg text-foreground">
-                      {formatPrice(productPrice)}
-                    </p>
+                <div className="space-y-4 max-h-64 overflow-y-auto">
+                  {selectedItems.map((item) => {
+                    const name = getProductName(item.type, item.productId);
+                    const product = getProduct(item.type, item.productId);
+                    const price = product?.price ?? 0;
+                    return (
+                      <div key={item.id} className="flex justify-between items-start">
+                        <div className="flex items-start gap-2">
+                          {getItemIcon(item.type)}
+                          <div>
+                            <p className="font-semibold text-foreground text-sm">{name}</p>
+                            <p className="text-xs text-muted-foreground capitalize">
+                              {item.type} {item.quantity > 1 && `× ${item.quantity}`}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="font-display font-bold text-sm text-foreground">
+                          {formatPrice(price * item.quantity)}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {appliedCoupon && (
+                  <div className="flex justify-between items-center text-sm mt-4 pt-4 border-t border-border">
+                    <span className="text-primary">Coupon: {appliedCoupon.code}</span>
+                    <span className="text-primary">
+                      -{appliedCoupon.type === "flat"
+                        ? formatPrice(appliedCoupon.value)
+                        : `${appliedCoupon.value}%`}
+                    </span>
                   </div>
+                )}
 
-                  {appliedCoupon && (
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-primary">Coupon: {appliedCoupon.code}</span>
-                      <span className="text-primary">
-                        -{appliedCoupon.type === "flat"
-                          ? formatPrice(appliedCoupon.value)
-                          : `${appliedCoupon.value}%`}
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="border-t border-border pt-4">
-                    <div className="flex justify-between items-center">
-                      <span className="font-semibold">Total</span>
-                      <span className="font-display font-bold text-xl text-primary">
-                        {formatPrice(finalPrice)}
-                      </span>
-                    </div>
+                <div className="border-t border-border pt-4 mt-4">
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold">Total</span>
+                    <span className="font-display font-bold text-xl text-primary">
+                      {formatPrice(finalPrice)}
+                    </span>
                   </div>
                 </div>
 
@@ -361,7 +376,7 @@ const Checkout = () => {
                 <div className="mt-6 space-y-2">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Clock className="w-4 h-4 text-primary" />
-                    <span>{type === "rank" ? "30 days duration" : "Instant delivery"}</span>
+                    <span>Instant delivery after payment</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <Shield className="w-4 h-4 text-primary" />
