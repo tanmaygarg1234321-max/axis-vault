@@ -164,7 +164,7 @@ const Index = () => {
                   <p className="text-muted-foreground text-sm mb-4 leading-relaxed">
                     Unlock exclusive perks, commands, and cosmetics
                   </p>
-                  <p className="text-primary font-bold text-lg">From ₹105</p>
+                  <p className="text-primary font-display font-bold text-lg">From ₹105</p>
                 </div>
               </Link>
 
@@ -182,7 +182,7 @@ const Index = () => {
                   <p className="text-muted-foreground text-sm mb-4 leading-relaxed">
                     Random rewards, rare items, and exclusive loot
                   </p>
-                  <p className="text-primary font-bold text-lg">From ₹90</p>
+                  <p className="text-primary font-display font-bold text-lg">From ₹90</p>
                 </div>
               </Link>
 
@@ -200,7 +200,7 @@ const Index = () => {
                   <p className="text-muted-foreground text-sm mb-4 leading-relaxed">
                     Instant economy boost for your adventures
                   </p>
-                  <p className="text-primary font-bold text-lg">From ₹32</p>
+                  <p className="text-primary font-display font-bold text-lg">From ₹50</p>
                 </div>
               </Link>
             </div>

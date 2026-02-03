@@ -47,6 +47,13 @@ function validateEmail(email: string): boolean {
   return emailRegex.test(email) && email.length <= 255;
 }
 
+interface CartItem {
+  type: string;
+  productId: string;
+  quantity: number;
+  name: string;
+}
+
 serve(async (req) => {
   const origin = req.headers.get('origin');
   const corsHeaders = getCorsHeaders(origin);
@@ -56,7 +63,34 @@ serve(async (req) => {
   }
 
   try {
-    const { productType, productId, productName, amount, minecraftUsername, discordUsername, giftTo, couponId, userId, userEmail } = await req.json();
+    const body = await req.json();
+    
+    // Support both old single-product format and new cart format
+    let cartItems: CartItem[] = [];
+    let totalAmount = 0;
+    let productName = "";
+    let productType = "";
+    
+    if (body.cartItems && Array.isArray(body.cartItems)) {
+      // New cart format
+      cartItems = body.cartItems;
+      totalAmount = body.amount;
+      productName = cartItems.length === 1 ? cartItems[0].name : `${cartItems.length} items bundle`;
+      productType = cartItems.length === 1 ? cartItems[0].type : "bundle";
+    } else {
+      // Old single-product format (backward compatibility)
+      cartItems = [{
+        type: body.productType,
+        productId: body.productId,
+        quantity: 1,
+        name: body.productName,
+      }];
+      totalAmount = body.amount;
+      productName = body.productName;
+      productType = body.productType;
+    }
+
+    const { minecraftUsername, discordUsername, giftTo, couponId, userId, userEmail } = body;
 
     // Input validation
     if (!validateMinecraftUsername(minecraftUsername)) {
@@ -88,22 +122,14 @@ serve(async (req) => {
     }
 
     // Validate amount
-    if (typeof amount !== 'number' || amount <= 0 || amount > 1000000) {
+    if (typeof totalAmount !== 'number' || totalAmount <= 0 || totalAmount > 1000000) {
       return new Response(
         JSON.stringify({ error: "Invalid amount." }),
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
-    // Validate product type
-    if (!['rank', 'crate', 'money'].includes(productType)) {
-      return new Response(
-        JSON.stringify({ error: "Invalid product type." }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    console.log("Creating order:", { productType, productId, productName, amount, minecraftUsername, couponId, userId });
+    console.log("Creating order:", { cartItems, totalAmount, minecraftUsername, couponId, userId });
 
     const orderId = `AXS${Date.now()}${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
@@ -119,13 +145,13 @@ serve(async (req) => {
         "Authorization": `Basic ${authHeader}`,
       },
       body: JSON.stringify({
-        amount: Math.floor(amount * 100),
+        amount: Math.floor(totalAmount * 100),
         currency: "INR",
         receipt: orderId,
         notes: {
-          product_type: productType,
-          product_id: sanitizeInput(productId, 50),
+          product_name: sanitizeInput(productName, 100),
           minecraft_username: minecraftUsername,
+          items_count: cartItems.length,
         },
       }),
     });
@@ -142,6 +168,7 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
+    // Create order in database with cart items stored as JSON in metadata
     await fetch(`${supabaseUrl}/rest/v1/orders`, {
       method: "POST",
       headers: {
@@ -155,14 +182,16 @@ serve(async (req) => {
         minecraft_username: minecraftUsername,
         discord_username: sanitizeInput(discordUsername, 32),
         product_name: sanitizeInput(productName, 100),
-        product_type: productType,
-        amount: Math.floor(amount),
+        product_type: productType === "bundle" ? "crate" : productType, // Use 'crate' for bundles as fallback
+        amount: Math.floor(totalAmount),
         razorpay_order_id: razorpayOrder.id,
         gift_to: giftTo || null,
         payment_status: "pending",
         delivery_status: "pending",
         user_id: userId || null,
         user_email: userEmail ? sanitizeInput(userEmail, 255) : null,
+        // Store cart items in error_log temporarily (we can add a proper column later)
+        error_log: JSON.stringify({ cartItems }),
       }),
     });
 
@@ -206,7 +235,7 @@ serve(async (req) => {
       body: JSON.stringify({
         type: "info",
         message: `Order created: ${orderId} for ${sanitizeInput(productName, 50)}`,
-        metadata: { orderId, productName: sanitizeInput(productName, 50), amount, minecraftUsername, couponId: couponId || null, userId: userId || null },
+        metadata: { orderId, productName: sanitizeInput(productName, 50), amount: totalAmount, minecraftUsername, couponId: couponId || null, userId: userId || null, cartItems },
       }),
     });
 

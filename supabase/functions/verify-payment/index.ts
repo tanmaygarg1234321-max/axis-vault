@@ -294,148 +294,137 @@ serve(async (req) => {
     }
 
     try {
-      if (order.product_type === "rank") {
-        // Extract and sanitize rank name
-        const safeRankName = sanitizeRankName(order.product_name);
-        if (!safeRankName) {
-          throw new Error("Invalid rank name format");
+      // Parse cart items from error_log if available
+      interface CartItem {
+        type: string;
+        productId: string;
+        quantity: number;
+        name: string;
+      }
+      
+      let cartItems: CartItem[] = [];
+      try {
+        if (order.error_log && order.error_log.startsWith('{')) {
+          const parsed = JSON.parse(order.error_log);
+          if (parsed.cartItems) {
+            cartItems = parsed.cartItems;
+          }
         }
-        
-        command = `lp user ${safeUsername} parent addtemp ${safeRankName} 30d`;
-        
-        // Execute RCON command
-        if (rconConnected && rcon) {
-          const result = await rcon.sendCommand(command);
-          console.log("RCON result:", result);
-          
-          // Log RCON execution
-          await fetch(`${supabaseUrl}/rest/v1/logs`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "apikey": supabaseKey,
-              "Authorization": `Bearer ${supabaseKey}`,
-              "Prefer": "return=minimal",
-            },
-            body: JSON.stringify({
-              type: "rcon",
-              message: `RCON command executed: ${command}`,
-              order_id: order.id,
-              metadata: { command, result },
-            }),
-          });
+      } catch (e) {
+        // Not JSON, treat as single product
+      }
+
+      // If no cart items, create from order
+      if (cartItems.length === 0) {
+        cartItems = [{
+          type: order.product_type,
+          productId: order.product_name.toLowerCase().replace(/ /g, '-'),
+          quantity: 1,
+          name: order.product_name,
+        }];
+      }
+
+      // Process each item
+      for (const item of cartItems) {
+        for (let i = 0; i < item.quantity; i++) {
+          if (item.type === "rank") {
+            // /lp user <username> parent addtemp <rank> 30d
+            const rankName = item.name.replace(/ Rank$/i, "");
+            // Keep proper casing for rank names: Stranger, Mythic, Amethyst
+            const safeRankName = rankName.charAt(0).toUpperCase() + rankName.slice(1).toLowerCase();
+            
+            command = `lp user ${safeUsername} parent addtemp ${safeRankName} 30d`;
+            
+            if (rconConnected && rcon) {
+              const result = await rcon.sendCommand(command);
+              console.log("RCON result:", result);
+              
+              await fetch(`${supabaseUrl}/rest/v1/logs`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "apikey": supabaseKey,
+                  "Authorization": `Bearer ${supabaseKey}`,
+                  "Prefer": "return=minimal",
+                },
+                body: JSON.stringify({
+                  type: "rcon",
+                  message: `RCON command executed: ${command}`,
+                  order_id: order.id,
+                  metadata: { command, result },
+                }),
+              });
+              deliverySuccess = true;
+            }
+
+            // Store active rank for expiry tracking
+            const expiresAt = new Date();
+            expiresAt.setDate(expiresAt.getDate() + 30);
+
+            await fetch(`${supabaseUrl}/rest/v1/active_ranks`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "apikey": supabaseKey,
+                "Authorization": `Bearer ${supabaseKey}`,
+                "Prefer": "return=minimal",
+              },
+              body: JSON.stringify({
+                order_id: order.id,
+                minecraft_username: safeUsername,
+                rank_name: safeRankName,
+                expires_at: expiresAt.toISOString(),
+              }),
+            });
+
+            console.log(`Rank ${safeRankName} granted to ${safeUsername} until ${expiresAt}`);
+
+          } else if (item.type === "crate") {
+            // /crates giveKey <cratename> <username> <qty>
+            const crateCommandMap: Record<string, string> = {
+              "keyall crate": "keall_crate",
+              "money crate": "Moneycrate",
+              "astro crate": "astro_crate",
+              "moon crate": "Moon_crate",
+            };
+            
+            const crateLower = item.name.toLowerCase();
+            const crateName = crateCommandMap[crateLower] || sanitizeForRCON(item.name.replace(/ Crate$/i, ""));
+            
+            if (crateName) {
+              command = `crates giveKey ${crateName} ${safeUsername} 1`;
+              
+              if (rconConnected && rcon) {
+                const result = await rcon.sendCommand(command);
+                console.log("RCON result:", result);
+                
+                await fetch(`${supabaseUrl}/rest/v1/logs`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "apikey": supabaseKey,
+                    "Authorization": `Bearer ${supabaseKey}`,
+                    "Prefer": "return=minimal",
+                  },
+                  body: JSON.stringify({
+                    type: "rcon",
+                    message: `RCON command executed: ${command}`,
+                    order_id: order.id,
+                    metadata: { command, result },
+                  }),
+                });
+                deliverySuccess = true;
+              }
+            }
+            
+            console.log(`Crate delivery: ${command}`);
+
+          } else if (item.type === "money") {
+            // Skip money for now as requested
+            console.log(`Money delivery skipped for ${item.name}`);
+            deliverySuccess = true; // Mark as success since skipping is intentional
+          }
         }
-
-        // Store active rank for expiry tracking (30 days)
-        const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + 30);
-
-        await fetch(`${supabaseUrl}/rest/v1/active_ranks`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "apikey": supabaseKey,
-            "Authorization": `Bearer ${supabaseKey}`,
-            "Prefer": "return=minimal",
-          },
-          body: JSON.stringify({
-            order_id: order.id,
-            minecraft_username: safeUsername,
-            rank_name: safeRankName,
-            expires_at: expiresAt.toISOString(),
-          }),
-        });
-
-        console.log(`Rank ${safeRankName} granted to ${safeUsername} until ${expiresAt}`);
-        deliverySuccess = true;
-
-      } else if (order.product_type === "money") {
-        // Extract amount from product name
-        const amountStr = order.product_name.replace(" In-Game Money", "");
-        let amount = 0;
-        if (amountStr.includes("B")) {
-          amount = parseFloat(amountStr.replace("B", "")) * 1000000000;
-        } else if (amountStr.includes("M")) {
-          amount = parseFloat(amountStr.replace("M", "")) * 1000000;
-        }
-
-        // Validate amount
-        if (isNaN(amount) || amount <= 0 || amount > 1000000000000) {
-          throw new Error("Invalid amount format");
-        }
-
-        command = `economy give ${safeUsername} ${Math.floor(amount)}`;
-        
-        // Execute RCON command
-        if (rconConnected && rcon) {
-          const result = await rcon.sendCommand(command);
-          console.log("RCON result:", result);
-          
-          await fetch(`${supabaseUrl}/rest/v1/logs`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "apikey": supabaseKey,
-              "Authorization": `Bearer ${supabaseKey}`,
-              "Prefer": "return=minimal",
-            },
-            body: JSON.stringify({
-              type: "rcon",
-              message: `RCON command executed: ${command}`,
-              order_id: order.id,
-              metadata: { command, result },
-            }),
-          });
-        }
-        
-        console.log(`Money command: ${command}`);
-        deliverySuccess = true;
-
-      } else if (order.product_type === "crate") {
-        // Map product name to crate command name
-        const crateNameMap: Record<string, string> = {
-          "astix crate": "astix",
-          "void crate": "void",
-          "spawner crate": "spawner",
-          "money crate": "money",
-          "keyall crate": "keyall",
-          "mythic crate": "mythic",
-        };
-        
-        const productLower = order.product_name.toLowerCase();
-        const crateName = crateNameMap[productLower] || sanitizeForRCON(order.product_name.replace(/ Crate$/i, "").toLowerCase());
-        
-        if (!crateName) {
-          throw new Error("Invalid crate name format");
-        }
-        
-        // Use the crates key give command format: crates key give <username> <crate> <amount>
-        command = `crates key give ${safeUsername} ${crateName} 1`;
-        
-        // Execute RCON command
-        if (rconConnected && rcon) {
-          const result = await rcon.sendCommand(command);
-          console.log("RCON result:", result);
-          
-          await fetch(`${supabaseUrl}/rest/v1/logs`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "apikey": supabaseKey,
-              "Authorization": `Bearer ${supabaseKey}`,
-              "Prefer": "return=minimal",
-            },
-            body: JSON.stringify({
-              type: "rcon",
-              message: `RCON command executed: ${command}`,
-              order_id: order.id,
-              metadata: { command, result },
-            }),
-          });
-        }
-        
-        console.log(`Crate delivery: ${command}`);
-        deliverySuccess = true;
       }
 
       // Close RCON connection

@@ -72,98 +72,85 @@ async function handleVerifyPayment(req, res) {
     let errorLog = "";
 
     try {
-      if (order.product_type === "rank") {
-        const safeRankName = sanitizeRankName(order.product_name);
-        if (!safeRankName) {
-          throw new Error("Invalid rank name format");
+      // Parse cart items from order if available
+      let cartItems = [];
+      try {
+        if (order.error_log && order.error_log.startsWith('{')) {
+          const parsed = JSON.parse(order.error_log);
+          if (parsed.cartItems) {
+            cartItems = parsed.cartItems;
+          }
         }
-        
-        command = `lp user ${safeUsername} parent addtemp ${safeRankName} 30d`;
-        
-        const rconResult = await executeRconCommand(command);
-        
+      } catch (e) {
+        // Not JSON, treat as single product
+      }
+
+      // If no cart items, create from order
+      if (cartItems.length === 0) {
+        cartItems = [{
+          type: order.product_type,
+          productId: order.product_name.toLowerCase().replace(/ /g, '-'),
+          quantity: 1,
+          name: order.product_name,
+        }];
+      }
+
+      // Process each item
+      const commands = [];
+      for (const item of cartItems) {
+        for (let i = 0; i < item.quantity; i++) {
+          if (item.type === "rank") {
+            // /lp user <username> parent addtemp <rank> 30d
+            const rankName = item.name.replace(/ Rank$/i, "");
+            const safeRankName = sanitizeForRCON(rankName);
+            if (safeRankName) {
+              commands.push(`lp user ${safeUsername} parent addtemp ${safeRankName} 30d`);
+              
+              // Store active rank for expiry tracking
+              const expiresAt = new Date();
+              expiresAt.setDate(expiresAt.getDate() + 30);
+              await db.insert("active_ranks", {
+                order_id: order.id,
+                minecraft_username: safeUsername,
+                rank_name: safeRankName,
+                expires_at: expiresAt.toISOString(),
+              });
+            }
+          } else if (item.type === "crate") {
+            // /crates giveKey <cratename> <username> <qty>
+            const crateCommandMap = {
+              "keyall crate": "keall_crate",
+              "money crate": "Moneycrate",
+              "astro crate": "astro_crate",
+              "moon crate": "Moon_crate",
+            };
+            const crateLower = item.name.toLowerCase();
+            const crateName = crateCommandMap[crateLower] || sanitizeForRCON(item.name.replace(/ Crate$/i, ""));
+            if (crateName) {
+              commands.push(`crates giveKey ${crateName} ${safeUsername} 1`);
+            }
+          } else if (item.type === "money") {
+            // Money delivery - skip for now as requested
+            console.log(`Money delivery skipped for ${item.name}`);
+          }
+        }
+      }
+
+      // Execute all RCON commands
+      for (const cmd of commands) {
+        const rconResult = await executeRconCommand(cmd);
         if (rconResult.success) {
-          await db.log("rcon", `RCON command executed: ${command}`, { command, result: rconResult.result }, order.id);
+          await db.log("rcon", `RCON command executed: ${cmd}`, { command: cmd, result: rconResult.result }, order.id);
+          deliverySuccess = true;
+        } else {
+          errorLog = rconResult.error || "RCON command failed";
+          await db.log("error", `RCON command failed: ${cmd}`, { command: cmd, error: errorLog }, order.id);
         }
+        command = cmd; // Store last command
+      }
 
-        // Store active rank for expiry tracking (30 days)
-        const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + 30);
-
-        await db.insert("active_ranks", {
-          order_id: order.id,
-          minecraft_username: safeUsername,
-          rank_name: safeRankName,
-          expires_at: expiresAt.toISOString(),
-        });
-
-        console.log(`Rank ${safeRankName} granted to ${safeUsername} until ${expiresAt}`);
-        deliverySuccess = rconResult.success;
-        if (!rconResult.success) {
-          errorLog = rconResult.error;
-        }
-
-      } else if (order.product_type === "money") {
-        const amountStr = order.product_name.replace(" In-Game Money", "");
-        let amount = 0;
-        if (amountStr.includes("B")) {
-          amount = parseFloat(amountStr.replace("B", "")) * 1000000000;
-        } else if (amountStr.includes("M")) {
-          amount = parseFloat(amountStr.replace("M", "")) * 1000000;
-        }
-
-        if (isNaN(amount) || amount <= 0 || amount > 1000000000000) {
-          throw new Error("Invalid amount format");
-        }
-
-        command = `economy give ${safeUsername} ${Math.floor(amount)}`;
-        
-        const rconResult = await executeRconCommand(command);
-        
-        if (rconResult.success) {
-          await db.log("rcon", `RCON command executed: ${command}`, { command, result: rconResult.result }, order.id);
-        }
-        
-        console.log(`Money command: ${command}`);
-        deliverySuccess = rconResult.success;
-        if (!rconResult.success) {
-          errorLog = rconResult.error;
-        }
-
-      } else if (order.product_type === "crate") {
-        const crateNameMap = {
-          "astix crate": "astix",
-          "void crate": "void",
-          "spawner crate": "spawner",
-          "money crate": "money",
-          "keyall crate": "keyall",
-          "mythic crate": "mythic",
-          "keyall-crate crate": "keyall",
-          "money-crate crate": "money",
-          "astro-crate crate": "astro",
-          "moon-crate crate": "moon",
-        };
-        
-        const productLower = order.product_name.toLowerCase();
-        const crateName = crateNameMap[productLower] || sanitizeForRCON(order.product_name.replace(/ Crate$/i, "").toLowerCase());
-        
-        if (!crateName) {
-          throw new Error("Invalid crate name format");
-        }
-        
-        command = `crates key give ${safeUsername} ${crateName} 1`;
-        
-        const rconResult = await executeRconCommand(command);
-        
-        if (rconResult.success) {
-          await db.log("rcon", `RCON command executed: ${command}`, { command, result: rconResult.result }, order.id);
-        }
-        
-        console.log(`Crate delivery: ${command}`);
-        deliverySuccess = rconResult.success;
-        if (!rconResult.success) {
-          errorLog = rconResult.error;
-        }
+      if (commands.length === 0) {
+        deliverySuccess = true; // No commands needed (e.g., money only)
       }
 
       // Determine delivery status
