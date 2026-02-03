@@ -28,7 +28,7 @@ export const ranks: Rank[] = [
   {
     id: "stranger",
     name: "Stranger",
-    price: 69,
+    price: 105,
     perks: [
       "Access to /fly command",
       "/kit stranger daily",
@@ -38,12 +38,12 @@ export const ranks: Rank[] = [
     ],
     color: "from-cyan-400 to-teal-600",
     duration: "30 Days",
-    command: "stranger"
+    command: "Stranger"
   },
   {
     id: "mythic",
     name: "Mythic",
-    price: 120,
+    price: 175,
     perks: [
       "All Stranger perks",
       "/kit mythic daily",
@@ -54,12 +54,12 @@ export const ranks: Rank[] = [
     ],
     color: "from-purple-500 to-violet-600",
     duration: "30 Days",
-    command: "mythic"
+    command: "Mythic"
   },
   {
     id: "amethyst",
     name: "Amethyst",
-    price: 167,
+    price: 250,
     perks: [
       "All Mythic perks",
       "/kit amethyst daily",
@@ -72,7 +72,7 @@ export const ranks: Rank[] = [
     ],
     color: "from-amber-400 to-orange-600",
     duration: "30 Days",
-    command: "amethyst"
+    command: "Amethyst"
   }
 ];
 
@@ -80,47 +80,47 @@ export const crates: Crate[] = [
   {
     id: "keyall-crate",
     name: "Keyall Crate",
-    price: 10,
+    price: 90,
     description: "A bundle of random keys for all crate types on the server",
     color: "from-cyan-500 to-blue-500",
-    command: "keyall",
+    command: "keall_crate",
   },
   {
     id: "money-crate",
     name: "Money Crate",
-    price: 20,
+    price: 120,
     description: "Guaranteed in-game currency rewards ranging from 100K to 10M",
     color: "from-green-500 to-emerald-600",
-    command: "money",
+    command: "Moneycrate",
   },
   {
     id: "astro-crate",
     name: "Astro Crate",
-    price: 35,
+    price: 150,
     description: "Cosmic rewards with rare enchants, gear and exclusive cosmetics",
     color: "from-indigo-500 to-blue-700",
-    command: "astro",
+    command: "astro_crate",
   },
   {
     id: "moon-crate",
     name: "Moon Crate",
-    price: 40,
+    price: 180,
     description: "Ultimate tier rewards including legendary gear and rare materials",
     color: "from-slate-300 to-slate-500",
-    command: "moon",
+    command: "Moon_crate",
   },
 ];
 
 
 export const moneyPackages: MoneyPackage[] = [
-  { id: "1m", amount: "1M", amountInt: 1000000, price: 32 },
-  { id: "5m", amount: "5M", amountInt: 5000000, price: 105 },
-  { id: "10m", amount: "10M", amountInt: 10000000, price: 155 },
-  { id: "50m", amount: "50M", amountInt: 50000000, price: 210 },
-  { id: "100m", amount: "100M", amountInt: 100000000, price: 315 },
-  { id: "1b", amount: "1B", amountInt: 1000000000, price: 520 },
-  { id: "10b", amount: "10B", amountInt: 10000000000, price: 830 },
-  { id: "100b", amount: "100B", amountInt: 100000000000, price: 1040 }
+  { id: "1m", amount: "1M", amountInt: 1000000, price: 50 },
+  { id: "5m", amount: "5M", amountInt: 5000000, price: 150 },
+  { id: "10m", amount: "10M", amountInt: 10000000, price: 250 },
+  { id: "50m", amount: "50M", amountInt: 50000000, price: 400 },
+  { id: "100m", amount: "100M", amountInt: 100000000, price: 600 },
+  { id: "1b", amount: "1B", amountInt: 1000000000, price: 900 },
+  { id: "10b", amount: "10B", amountInt: 10000000000, price: 1500 },
+  { id: "100b", amount: "100B", amountInt: 100000000000, price: 2500 }
 ];
 
 export const formatPrice = (price: number) => `₹${price}`;

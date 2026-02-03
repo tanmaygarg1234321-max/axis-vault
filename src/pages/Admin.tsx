@@ -55,12 +55,15 @@ import {
   ToggleRight,
   Mail,
   Send,
+  Tag,
+  RotateCw,
+  Crown,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Helmet } from "react-helmet-async";
-import { formatPrice } from "@/lib/products";
+import { formatPrice, ranks, crates, moneyPackages } from "@/lib/products";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, CartesianGrid, BarChart, Bar, XAxis, YAxis } from "recharts";
 import AdminUsersSection from "@/components/AdminUsersSection";
 import { invokeEdgeFunction } from "@/lib/edge-functions";
@@ -137,6 +140,10 @@ const Admin = () => {
     value: 0,
     max_uses: 100,
   });
+
+  // Discount/Price override state
+  const [priceOverrides, setPriceOverrides] = useState<Record<string, number>>({});
+  const [savingPrices, setSavingPrices] = useState(false);
 
   // Get admin token for API calls
   const getAdminToken = () => sessionStorage.getItem("admin_token");
@@ -873,6 +880,7 @@ const Admin = () => {
               { id: "users", icon: Users, label: "Users", description: "Customer info" },
               { id: "logs", icon: FileText, label: "Logs", description: "System logs" },
               { id: "coupons", icon: Ticket, label: "Coupons", description: "Discount codes" },
+              { id: "discounts", icon: Tag, label: "Discounts", description: "Price management" },
               { id: "email", icon: Mail, label: "Email", description: "Bulk messaging" },
               { id: "settings", icon: Settings, label: "Settings", description: "Configuration" },
             ].map((item) => (
@@ -920,6 +928,7 @@ const Admin = () => {
                   {activeTab === "users" && "View customer information and purchase history"}
                   {activeTab === "logs" && "System activity and event logs"}
                   {activeTab === "coupons" && "Create and manage discount codes"}
+                  {activeTab === "discounts" && "Manage product prices and discounts"}
                   {activeTab === "email" && "Send emails to all customers"}
                   {activeTab === "settings" && "Configure store settings"}
                 </p>
@@ -1538,6 +1547,262 @@ const Admin = () => {
                         ))}
                       </TableBody>
                     </Table>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+
+            {/* Discounts / Price Management */}
+            {activeTab === "discounts" && (
+              <div className="space-y-6">
+                <Card className="bg-card/50 backdrop-blur">
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <div>
+                      <CardTitle className="text-lg font-display flex items-center gap-2">
+                        <Tag className="w-5 h-5 text-primary" />
+                        Price Management
+                      </CardTitle>
+                      <CardDescription>
+                        Temporarily override product prices. Changes are saved to the database.
+                      </CardDescription>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        setSavingPrices(true);
+                        try {
+                          await invokeEdgeFunction("admin-action", {
+                            headers: getAdminHeaders(),
+                            body: { action: "reset_all_prices" },
+                          });
+                          setPriceOverrides({});
+                          toast.success("All prices reset to defaults");
+                        } catch (err: any) {
+                          toast.error(err.message || "Failed to reset prices");
+                        }
+                        setSavingPrices(false);
+                      }}
+                      disabled={savingPrices || Object.keys(priceOverrides).length === 0}
+                      className="gap-2"
+                    >
+                      <RotateCw className="w-4 h-4" />
+                      Reset All Prices
+                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-6">
+                      {/* Ranks */}
+                      <div>
+                        <h3 className="font-display font-semibold mb-3 flex items-center gap-2">
+                          <Crown className="w-4 h-4 text-amber-400" />
+                          Ranks
+                        </h3>
+                        <div className="bg-background/50 rounded-lg border border-border/50">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Rank Name</TableHead>
+                                <TableHead>Original Price</TableHead>
+                                <TableHead>Current Price</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {ranks.map((rank) => {
+                                const key = `rank-${rank.id}`;
+                                const currentPrice = priceOverrides[key] ?? rank.price;
+                                const isModified = priceOverrides[key] !== undefined;
+                                return (
+                                  <TableRow key={rank.id}>
+                                    <TableCell className="font-medium">{rank.name}</TableCell>
+                                    <TableCell className="text-muted-foreground">{formatPrice(rank.price)}</TableCell>
+                                    <TableCell>
+                                      <Input
+                                        type="number"
+                                        value={currentPrice}
+                                        onChange={(e) => {
+                                          const val = parseInt(e.target.value) || 0;
+                                          setPriceOverrides(prev => ({ ...prev, [key]: val }));
+                                        }}
+                                        className={`w-24 h-8 ${isModified ? 'border-primary' : ''}`}
+                                      />
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                          setPriceOverrides(prev => {
+                                            const next = { ...prev };
+                                            delete next[key];
+                                            return next;
+                                          });
+                                        }}
+                                        disabled={!isModified}
+                                        className="h-8 gap-1"
+                                      >
+                                        <RotateCcw className="w-3 h-3" />
+                                        Reset
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
+
+                      {/* Crates */}
+                      <div>
+                        <h3 className="font-display font-semibold mb-3 flex items-center gap-2">
+                          <Package className="w-4 h-4 text-blue-400" />
+                          Crates
+                        </h3>
+                        <div className="bg-background/50 rounded-lg border border-border/50">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Crate Name</TableHead>
+                                <TableHead>Original Price</TableHead>
+                                <TableHead>Current Price</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {crates.map((crate) => {
+                                const key = `crate-${crate.id}`;
+                                const currentPrice = priceOverrides[key] ?? crate.price;
+                                const isModified = priceOverrides[key] !== undefined;
+                                return (
+                                  <TableRow key={crate.id}>
+                                    <TableCell className="font-medium">{crate.name}</TableCell>
+                                    <TableCell className="text-muted-foreground">{formatPrice(crate.price)}</TableCell>
+                                    <TableCell>
+                                      <Input
+                                        type="number"
+                                        value={currentPrice}
+                                        onChange={(e) => {
+                                          const val = parseInt(e.target.value) || 0;
+                                          setPriceOverrides(prev => ({ ...prev, [key]: val }));
+                                        }}
+                                        className={`w-24 h-8 ${isModified ? 'border-primary' : ''}`}
+                                      />
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                          setPriceOverrides(prev => {
+                                            const next = { ...prev };
+                                            delete next[key];
+                                            return next;
+                                          });
+                                        }}
+                                        disabled={!isModified}
+                                        className="h-8 gap-1"
+                                      >
+                                        <RotateCcw className="w-3 h-3" />
+                                        Reset
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
+
+                      {/* Money Packages */}
+                      <div>
+                        <h3 className="font-display font-semibold mb-3 flex items-center gap-2">
+                          <DollarSign className="w-4 h-4 text-yellow-400" />
+                          Money Packages
+                        </h3>
+                        <div className="bg-background/50 rounded-lg border border-border/50">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Package</TableHead>
+                                <TableHead>Original Price</TableHead>
+                                <TableHead>Current Price</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {moneyPackages.map((pkg) => {
+                                const key = `money-${pkg.id}`;
+                                const currentPrice = priceOverrides[key] ?? pkg.price;
+                                const isModified = priceOverrides[key] !== undefined;
+                                return (
+                                  <TableRow key={pkg.id}>
+                                    <TableCell className="font-medium">{pkg.amount} In-Game Money</TableCell>
+                                    <TableCell className="text-muted-foreground">{formatPrice(pkg.price)}</TableCell>
+                                    <TableCell>
+                                      <Input
+                                        type="number"
+                                        value={currentPrice}
+                                        onChange={(e) => {
+                                          const val = parseInt(e.target.value) || 0;
+                                          setPriceOverrides(prev => ({ ...prev, [key]: val }));
+                                        }}
+                                        className={`w-24 h-8 ${isModified ? 'border-primary' : ''}`}
+                                      />
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => {
+                                          setPriceOverrides(prev => {
+                                            const next = { ...prev };
+                                            delete next[key];
+                                            return next;
+                                          });
+                                        }}
+                                        disabled={!isModified}
+                                        className="h-8 gap-1"
+                                      >
+                                        <RotateCcw className="w-3 h-3" />
+                                        Reset
+                                      </Button>
+                                    </TableCell>
+                                  </TableRow>
+                                );
+                              })}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
+
+                      {/* Save Button */}
+                      <div className="flex justify-end pt-4 border-t border-border">
+                        <Button
+                          onClick={async () => {
+                            setSavingPrices(true);
+                            try {
+                              await invokeEdgeFunction("admin-action", {
+                                headers: getAdminHeaders(),
+                                body: { action: "save_price_overrides", overrides: priceOverrides },
+                              });
+                              toast.success("Prices saved successfully!");
+                            } catch (err: any) {
+                              toast.error(err.message || "Failed to save prices");
+                            }
+                            setSavingPrices(false);
+                          }}
+                          disabled={savingPrices}
+                          className="gap-2"
+                        >
+                          {savingPrices ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                          Save All Prices
+                        </Button>
+                      </div>
+                    </div>
                   </CardContent>
                 </Card>
               </div>
