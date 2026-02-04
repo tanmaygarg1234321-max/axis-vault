@@ -860,6 +860,104 @@ serve(async (req) => {
         );
       }
 
+      case "save_shop_config": {
+        // Save shop configuration to site_settings
+        const configValue = JSON.stringify(params.config || {});
+        
+        // Try to update existing, if not found, insert
+        const checkResponse = await fetch(
+          `${supabaseUrl}/rest/v1/site_settings?key=eq.shop_config&select=id`,
+          {
+            headers: {
+              "apikey": supabaseKey,
+              "Authorization": `Bearer ${supabaseKey}`,
+            },
+          }
+        );
+        const existing = await checkResponse.json();
+        
+        if (existing && existing.length > 0) {
+          await fetch(`${supabaseUrl}/rest/v1/site_settings?key=eq.shop_config`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": supabaseKey,
+              "Authorization": `Bearer ${supabaseKey}`,
+              "Prefer": "return=minimal",
+            },
+            body: JSON.stringify({ value: configValue }),
+          });
+        } else {
+          await fetch(`${supabaseUrl}/rest/v1/site_settings`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": supabaseKey,
+              "Authorization": `Bearer ${supabaseKey}`,
+              "Prefer": "return=minimal",
+            },
+            body: JSON.stringify({ key: "shop_config", value: configValue }),
+          });
+        }
+
+        await fetch(`${supabaseUrl}/rest/v1/logs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Prefer": "return=minimal",
+          },
+          body: JSON.stringify({
+            type: "admin",
+            message: `Shop configuration saved by ${payload?.username}`,
+            metadata: { action: "save_shop_config", admin: payload?.username },
+          }),
+        });
+        break;
+      }
+
+      case "save_price_overrides": {
+        // Legacy action - redirect to save_shop_config
+        const configValue = JSON.stringify(params.overrides || {});
+        
+        const checkResponse = await fetch(
+          `${supabaseUrl}/rest/v1/site_settings?key=eq.shop_config&select=id`,
+          {
+            headers: {
+              "apikey": supabaseKey,
+              "Authorization": `Bearer ${supabaseKey}`,
+            },
+          }
+        );
+        const existing = await checkResponse.json();
+        
+        if (existing && existing.length > 0) {
+          await fetch(`${supabaseUrl}/rest/v1/site_settings?key=eq.shop_config`, {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": supabaseKey,
+              "Authorization": `Bearer ${supabaseKey}`,
+              "Prefer": "return=minimal",
+            },
+            body: JSON.stringify({ value: configValue }),
+          });
+        } else {
+          await fetch(`${supabaseUrl}/rest/v1/site_settings`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "apikey": supabaseKey,
+              "Authorization": `Bearer ${supabaseKey}`,
+              "Prefer": "return=minimal",
+            },
+            body: JSON.stringify({ key: "shop_config", value: configValue }),
+          });
+        }
+        break;
+      }
+
       default:
         throw new Error("Unknown action");
     }

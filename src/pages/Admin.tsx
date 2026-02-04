@@ -66,6 +66,7 @@ import { Helmet } from "react-helmet-async";
 import { formatPrice, ranks, crates, moneyPackages } from "@/lib/products";
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip, CartesianGrid, BarChart, Bar, XAxis, YAxis } from "recharts";
 import AdminUsersSection from "@/components/AdminUsersSection";
+import AdminShopConfig from "@/components/AdminShopConfig";
 import { invokeEdgeFunction } from "@/lib/edge-functions";
 
 interface LogEntry {
@@ -880,6 +881,7 @@ const Admin = () => {
               { id: "users", icon: Users, label: "Users", description: "Customer info" },
               { id: "logs", icon: FileText, label: "Logs", description: "System logs" },
               { id: "coupons", icon: Ticket, label: "Coupons", description: "Discount codes" },
+              { id: "shop", icon: Crown, label: "Shop", description: "Product config" },
               { id: "discounts", icon: Tag, label: "Discounts", description: "Price management" },
               { id: "email", icon: Mail, label: "Email", description: "Bulk messaging" },
               { id: "settings", icon: Settings, label: "Settings", description: "Configuration" },
@@ -1806,6 +1808,11 @@ const Admin = () => {
                   </CardContent>
                 </Card>
               </div>
+            )}
+
+            {/* Shop Configuration */}
+            {activeTab === "shop" && (
+              <AdminShopConfig getAdminHeaders={getAdminHeaders} />
             )}
 
             {/* Email */}

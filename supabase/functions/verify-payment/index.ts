@@ -44,13 +44,6 @@ function sanitizeForRCON(input: string): string {
   return input.replace(/[^a-zA-Z0-9_-]/g, '');
 }
 
-// Validate and sanitize rank name
-function sanitizeRankName(rankName: string): string {
-  if (!rankName || typeof rankName !== 'string') return '';
-  // Remove " Rank" suffix and lowercase, then sanitize
-  return sanitizeForRCON(rankName.replace(/ Rank$/i, "").toLowerCase());
-}
-
 // RCON client for Minecraft server
 class RCONClient {
   private host: string;
@@ -161,6 +154,21 @@ async function sendEmail(supabaseUrl: string, supabaseKey: string, emailData: an
   }
 }
 
+interface CartItem {
+  type: string;
+  productId: string;
+  quantity: number;
+  name: string;
+  amountInt?: number; // For money packages
+}
+
+interface CommandResult {
+  command: string;
+  success: boolean;
+  result?: string;
+  error?: string;
+}
+
 serve(async (req) => {
   const origin = req.headers.get('origin');
   const corsHeaders = getCorsHeaders(origin);
@@ -236,7 +244,7 @@ serve(async (req) => {
 
     const safeUsername = sanitizeForRCON(targetUsername);
 
-    // Update order status to paid
+    // Update order status to paid immediately
     await fetch(`${supabaseUrl}/rest/v1/orders?id=eq.${order.id}`, {
       method: "PATCH",
       headers: {
@@ -268,21 +276,45 @@ serve(async (req) => {
       }),
     });
 
-    // Process delivery with RCON
-    let command = "";
-    let deliverySuccess = false;
-    let errorLog = "";
+    // Parse cart items from error_log
+    let cartItems: CartItem[] = [];
+    try {
+      if (order.error_log && order.error_log.startsWith('{')) {
+        const parsed = JSON.parse(order.error_log);
+        if (parsed.cartItems) {
+          cartItems = parsed.cartItems;
+        }
+      }
+    } catch (e) {
+      console.log("No cart items in order, using single product");
+    }
+
+    // If no cart items, create from order
+    if (cartItems.length === 0) {
+      cartItems = [{
+        type: order.product_type,
+        productId: order.product_name.toLowerCase().replace(/ /g, '-'),
+        quantity: 1,
+        name: order.product_name,
+      }];
+    }
 
     // Get RCON credentials
     const rconHost = Deno.env.get("RCON_HOST");
-    const rconPort = parseInt(Deno.env.get("RCON_PORT") || "25575");
+    const rconPort = parseInt(Deno.env.get("RCON_PORT") || "25584");
     const rconPassword = Deno.env.get("RCON_PASSWORD");
 
     let rcon: RCONClient | null = null;
     let rconConnected = false;
 
-    if (rconHost && rconPassword) {
-      rcon = new RCONClient(rconHost, rconPort, rconPassword);
+    // Parse RCON host (may contain port like "host:port")
+    let actualHost = rconHost || "";
+    if (actualHost.includes(":")) {
+      actualHost = actualHost.split(":")[0];
+    }
+
+    if (actualHost && rconPassword) {
+      rcon = new RCONClient(actualHost, rconPort, rconPassword);
       try {
         rconConnected = await rcon.connect();
         console.log("RCON connected:", rconConnected);
@@ -293,112 +325,33 @@ serve(async (req) => {
       console.log("RCON credentials not configured");
     }
 
+    const commandResults: CommandResult[] = [];
+    let deliverySuccess = false;
+
     try {
-      // Parse cart items from error_log if available
-      interface CartItem {
-        type: string;
-        productId: string;
-        quantity: number;
-        name: string;
-      }
-      
-      let cartItems: CartItem[] = [];
-      try {
-        if (order.error_log && order.error_log.startsWith('{')) {
-          const parsed = JSON.parse(order.error_log);
-          if (parsed.cartItems) {
-            cartItems = parsed.cartItems;
-          }
-        }
-      } catch (e) {
-        // Not JSON, treat as single product
-      }
-
-      // If no cart items, create from order
-      if (cartItems.length === 0) {
-        cartItems = [{
-          type: order.product_type,
-          productId: order.product_name.toLowerCase().replace(/ /g, '-'),
-          quantity: 1,
-          name: order.product_name,
-        }];
-      }
-
-      // Process each item
+      // Process each item in the cart separately
       for (const item of cartItems) {
         for (let i = 0; i < item.quantity; i++) {
+          let command = "";
+          
           if (item.type === "rank") {
-            // /lp user <username> parent addtemp <rank> 30d
+            // Rank command: lp user <username> parent addtemp <rank> 30d
             const rankName = item.name.replace(/ Rank$/i, "");
-            // Keep proper casing for rank names: Stranger, Mythic, Amethyst
             const safeRankName = rankName.charAt(0).toUpperCase() + rankName.slice(1).toLowerCase();
             
             command = `lp user ${safeUsername} parent addtemp ${safeRankName} 30d`;
             
             if (rconConnected && rcon) {
-              const result = await rcon.sendCommand(command);
-              console.log("RCON result:", result);
-              
-              await fetch(`${supabaseUrl}/rest/v1/logs`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "apikey": supabaseKey,
-                  "Authorization": `Bearer ${supabaseKey}`,
-                  "Prefer": "return=minimal",
-                },
-                body: JSON.stringify({
-                  type: "rcon",
-                  message: `RCON command executed: ${command}`,
-                  order_id: order.id,
-                  metadata: { command, result },
-                }),
-              });
-              deliverySuccess = true;
-            }
-
-            // Store active rank for expiry tracking
-            const expiresAt = new Date();
-            expiresAt.setDate(expiresAt.getDate() + 30);
-
-            await fetch(`${supabaseUrl}/rest/v1/active_ranks`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "apikey": supabaseKey,
-                "Authorization": `Bearer ${supabaseKey}`,
-                "Prefer": "return=minimal",
-              },
-              body: JSON.stringify({
-                order_id: order.id,
-                minecraft_username: safeUsername,
-                rank_name: safeRankName,
-                expires_at: expiresAt.toISOString(),
-              }),
-            });
-
-            console.log(`Rank ${safeRankName} granted to ${safeUsername} until ${expiresAt}`);
-
-          } else if (item.type === "crate") {
-            // /crates giveKey <cratename> <username> <qty>
-            const crateCommandMap: Record<string, string> = {
-              "keyall crate": "keall_crate",
-              "money crate": "Moneycrate",
-              "astro crate": "astro_crate",
-              "moon crate": "Moon_crate",
-            };
-            
-            const crateLower = item.name.toLowerCase();
-            const crateName = crateCommandMap[crateLower] || sanitizeForRCON(item.name.replace(/ Crate$/i, ""));
-            
-            if (crateName) {
-              command = `crates giveKey ${crateName} ${safeUsername} 1`;
-              
-              if (rconConnected && rcon) {
+              try {
                 const result = await rcon.sendCommand(command);
-                console.log("RCON result:", result);
+                commandResults.push({ command, success: true, result });
+                console.log("Rank RCON result:", result);
                 
-                await fetch(`${supabaseUrl}/rest/v1/logs`, {
+                // Store active rank for expiry tracking
+                const expiresAt = new Date();
+                expiresAt.setDate(expiresAt.getDate() + 30);
+
+                await fetch(`${supabaseUrl}/rest/v1/active_ranks`, {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
@@ -407,22 +360,81 @@ serve(async (req) => {
                     "Prefer": "return=minimal",
                   },
                   body: JSON.stringify({
-                    type: "rcon",
-                    message: `RCON command executed: ${command}`,
                     order_id: order.id,
-                    metadata: { command, result },
+                    minecraft_username: safeUsername,
+                    rank_name: safeRankName,
+                    expires_at: expiresAt.toISOString(),
                   }),
                 });
+                
                 deliverySuccess = true;
+              } catch (err: any) {
+                commandResults.push({ command, success: false, error: err.message });
+              }
+            } else {
+              commandResults.push({ command, success: false, error: "RCON not connected" });
+            }
+            
+          } else if (item.type === "crate") {
+            // Crate command: crates giveKey <cratename> <username> <qty>
+            const crateCommandMap: Record<string, string> = {
+              "keyall crate": "keall_crate",
+              "money crate": "Moneycrate",
+              "astro crate": "astro_crate",
+              "moon crate": "Moon_crate",
+            };
+            
+            const crateLower = item.name.toLowerCase();
+            const crateName = crateCommandMap[crateLower] || sanitizeForRCON(item.name.replace(/ Crate$/i, "").replace(/ /g, "_"));
+            
+            if (crateName) {
+              command = `crates giveKey ${crateName} ${safeUsername} 1`;
+              
+              if (rconConnected && rcon) {
+                try {
+                  const result = await rcon.sendCommand(command);
+                  commandResults.push({ command, success: true, result });
+                  console.log("Crate RCON result:", result);
+                  deliverySuccess = true;
+                } catch (err: any) {
+                  commandResults.push({ command, success: false, error: err.message });
+                }
+              } else {
+                commandResults.push({ command, success: false, error: "RCON not connected" });
               }
             }
             
-            console.log(`Crate delivery: ${command}`);
-
           } else if (item.type === "money") {
-            // Skip money for now as requested
-            console.log(`Money delivery skipped for ${item.name}`);
-            deliverySuccess = true; // Mark as success since skipping is intentional
+            // Money command: eco give <username> <amount>
+            // Extract amount from the item
+            let moneyAmount = item.amountInt || 0;
+            
+            // If no amountInt, try to parse from name
+            if (!moneyAmount) {
+              const match = item.name.match(/(\d+)([MB])/i);
+              if (match) {
+                const num = parseInt(match[1]);
+                const unit = match[2].toUpperCase();
+                moneyAmount = unit === 'B' ? num * 1000000000 : num * 1000000;
+              }
+            }
+            
+            if (moneyAmount > 0) {
+              command = `eco give ${safeUsername} ${moneyAmount}`;
+              
+              if (rconConnected && rcon) {
+                try {
+                  const result = await rcon.sendCommand(command);
+                  commandResults.push({ command, success: true, result });
+                  console.log("Money RCON result:", result);
+                  deliverySuccess = true;
+                } catch (err: any) {
+                  commandResults.push({ command, success: false, error: err.message });
+                }
+              } else {
+                commandResults.push({ command, success: false, error: "RCON not connected" });
+              }
+            }
           }
         }
       }
@@ -432,11 +444,17 @@ serve(async (req) => {
         rcon.close();
       }
 
-      // Determine delivery status based on RCON connection
-      const finalDeliveryStatus = rconConnected ? "delivered" : "pending";
-      const finalPaymentStatus = rconConnected ? "delivered" : "paid";
+      // Determine delivery status
+      const allSuccessful = commandResults.length > 0 && commandResults.every(r => r.success);
+      const finalDeliveryStatus = allSuccessful ? "delivered" : "pending";
+      const finalPaymentStatus = allSuccessful ? "delivered" : "paid";
 
-      // Update order with delivery status and command
+      // Generate commands summary for display
+      const commandsSummary = commandResults.map(r => 
+        r.success ? `✓ ${r.command}` : `✗ ${r.command}: ${r.error}`
+      ).join("\n");
+
+      // Update order with delivery status and commands executed
       await fetch(`${supabaseUrl}/rest/v1/orders?id=eq.${order.id}`, {
         method: "PATCH",
         headers: {
@@ -448,8 +466,8 @@ serve(async (req) => {
         body: JSON.stringify({
           payment_status: finalPaymentStatus,
           delivery_status: finalDeliveryStatus,
-          command_executed: command,
-          error_log: !rconConnected ? "RCON not connected - pending manual delivery" : null,
+          command_executed: commandsSummary.substring(0, 500),
+          error_log: JSON.stringify({ cartItems, commandResults }),
         }),
       });
 
@@ -463,34 +481,39 @@ serve(async (req) => {
           "Prefer": "return=minimal",
         },
         body: JSON.stringify({
-          type: rconConnected ? "delivery" : "info",
-          message: rconConnected 
-            ? `Delivered ${order.product_name} to ${safeUsername}` 
-            : `Order ${orderId} pending delivery - RCON not available`,
+          type: allSuccessful ? "delivery" : "info",
+          message: allSuccessful 
+            ? `Delivered ${cartItems.length} items to ${safeUsername}` 
+            : `Order ${orderId} pending delivery - some commands failed`,
           order_id: order.id,
-          metadata: { command, rconConnected },
+          metadata: { cartItems, commandResults, rconConnected },
         }),
       });
 
       // Send success email if user has email
       if (order.user_email) {
+        // Build items list for email
+        const itemsList = cartItems.map(item => 
+          `${item.name}${item.quantity > 1 ? ` x${item.quantity}` : ''}`
+        ).join(", ");
+        
         await sendEmail(supabaseUrl, supabaseKey, {
           type: "receipt",
           to: order.user_email,
           orderData: {
             orderId: order.order_id,
-            productName: order.product_name,
+            productName: itemsList,
             amount: order.amount,
             minecraftUsername: order.minecraft_username,
             giftTo: order.gift_to,
             createdAt: order.created_at,
+            cartItems: cartItems,
           },
         });
       }
 
     } catch (deliveryError: any) {
       console.error("Delivery error:", deliveryError);
-      errorLog = deliveryError.message;
 
       if (rcon) {
         rcon.close();
@@ -506,8 +529,7 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           delivery_status: "pending",
-          command_executed: command,
-          error_log: errorLog,
+          error_log: JSON.stringify({ cartItems, error: deliveryError.message }),
         }),
       });
 
@@ -522,9 +544,9 @@ serve(async (req) => {
         },
         body: JSON.stringify({
           type: "error",
-          message: `Delivery failed for order ${orderId}: ${errorLog}`,
+          message: `Delivery failed for order ${orderId}: ${deliveryError.message}`,
           order_id: order.id,
-          metadata: { command, error: errorLog },
+          metadata: { cartItems, error: deliveryError.message },
         }),
       });
     }

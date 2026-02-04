@@ -60,11 +60,11 @@ const CrateCard = ({ crate }: CrateCardProps) => {
             <Button
               variant="hero"
               size="sm"
-              className="flex-1"
+              className="flex-1 text-xs sm:text-sm whitespace-nowrap px-2 sm:px-4"
               onClick={() => addToCart("crate", crate.id)}
             >
-              <ShoppingCart className="w-4 h-4 mr-1" />
-              Add to Cart
+              <ShoppingCart className="w-4 h-4 shrink-0 mr-1" />
+              <span className="truncate">Add</span>
             </Button>
           </div>
         </div>

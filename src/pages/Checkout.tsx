@@ -121,13 +121,22 @@ const Checkout = () => {
     setLoading(true);
 
     try {
-      // Build cart items for order
-      const cartItemsForOrder = selectedItems.map(item => ({
-        type: item.type,
-        productId: item.productId,
-        quantity: item.quantity,
-        name: getProductName(item.type, item.productId),
-      }));
+      // Build cart items for order (include amountInt for money packages)
+      const cartItemsForOrder = selectedItems.map(item => {
+        const product = getProduct(item.type, item.productId);
+        const baseItem = {
+          type: item.type,
+          productId: item.productId,
+          quantity: item.quantity,
+          name: getProductName(item.type, item.productId),
+        };
+        
+        // Include amountInt for money packages
+        if (item.type === "money" && product && "amountInt" in product) {
+          return { ...baseItem, amountInt: product.amountInt };
+        }
+        return baseItem;
+      });
 
       // Create order via edge function
       const { data, error } = await supabase.functions.invoke("create-order", {
