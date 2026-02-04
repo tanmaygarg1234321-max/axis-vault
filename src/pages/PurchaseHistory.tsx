@@ -19,7 +19,16 @@ import {
   Crown,
   Coins,
   LogIn,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
+
+interface CartItem {
+  type: string;
+  productId: string;
+  quantity: number;
+  name: string;
+}
 
 interface Order {
   id: string;
@@ -32,6 +41,7 @@ interface Order {
   minecraft_username: string;
   gift_to: string | null;
   created_at: string;
+  error_log: string | null;
 }
 
 const PurchaseHistory = () => {
@@ -39,6 +49,7 @@ const PurchaseHistory = () => {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -78,6 +89,20 @@ const PurchaseHistory = () => {
     setLoading(false);
   };
 
+  const parseCartItems = (order: Order): CartItem[] | null => {
+    try {
+      if (order.error_log && order.error_log.startsWith('{')) {
+        const parsed = JSON.parse(order.error_log);
+        if (parsed.cartItems && Array.isArray(parsed.cartItems)) {
+          return parsed.cartItems;
+        }
+      }
+    } catch (e) {
+      // Not JSON, return null
+    }
+    return null;
+  };
+
   const getStatusBadge = (status: string) => {
     const badges: any = {
       pending: (
@@ -114,6 +139,19 @@ const PurchaseHistory = () => {
         return <Coins className="w-5 h-5 text-yellow-400" />;
       default:
         return <ShoppingBag className="w-5 h-5 text-muted-foreground" />;
+    }
+  };
+
+  const getItemIcon = (type: string) => {
+    switch (type) {
+      case "rank":
+        return <Crown className="w-4 h-4 text-amber-400" />;
+      case "crate":
+        return <Package className="w-4 h-4 text-purple-400" />;
+      case "money":
+        return <Coins className="w-4 h-4 text-yellow-400" />;
+      default:
+        return <ShoppingBag className="w-4 h-4 text-muted-foreground" />;
     }
   };
 
@@ -199,43 +237,98 @@ const PurchaseHistory = () => {
               </Card>
             ) : (
               <div className="space-y-4">
-                {orders.map((order) => (
-                  <Card key={order.id} className="bg-card/50 backdrop-blur hover:bg-card/70 transition-colors">
-                    <CardContent className="p-6">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div className="flex items-start gap-4">
-                          <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center shrink-0">
-                            {getProductIcon(order.product_type)}
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-lg">{order.product_name}</h3>
-                            <p className="text-sm text-muted-foreground">
-                              Order: <span className="font-mono">{order.order_id}</span>
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              Player: {order.gift_to || order.minecraft_username}
-                              {order.gift_to && (
-                                <span className="text-primary ml-1">(Gift)</span>
+                {orders.map((order) => {
+                  const cartItems = parseCartItems(order);
+                  const isBundle = cartItems && cartItems.length > 1;
+                  const isExpanded = expandedOrder === order.id;
+                  
+                  return (
+                    <Card key={order.id} className="bg-card/50 backdrop-blur hover:bg-card/70 transition-colors">
+                      <CardContent className="p-6">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                          <div className="flex items-start gap-4">
+                            <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center shrink-0">
+                              {isBundle ? (
+                                <ShoppingBag className="w-6 h-6 text-primary" />
+                              ) : (
+                                getProductIcon(order.product_type)
                               )}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-semibold text-lg">{order.product_name}</h3>
+                                {isBundle && (
+                                  <span className="text-xs bg-primary/20 text-primary px-2 py-0.5 rounded-full">
+                                    {cartItems.length} items
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                Order: <span className="font-mono">{order.order_id}</span>
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                Player: {order.gift_to || order.minecraft_username}
+                                {order.gift_to && (
+                                  <span className="text-primary ml-1">(Gift)</span>
+                                )}
+                              </p>
+                              
+                              {/* Expandable items list for bundles */}
+                              {isBundle && (
+                                <button
+                                  onClick={() => setExpandedOrder(isExpanded ? null : order.id)}
+                                  className="flex items-center gap-1 text-sm text-primary mt-2 hover:underline"
+                                >
+                                  {isExpanded ? (
+                                    <>
+                                      <ChevronUp className="w-4 h-4" />
+                                      Hide items
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ChevronDown className="w-4 h-4" />
+                                      View items
+                                    </>
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col md:items-end gap-2">
+                            <p className="font-display font-bold text-xl text-primary">
+                              {formatPrice(order.amount)}
+                            </p>
+                            <div className="flex items-center gap-2">
+                              {getStatusBadge(order.payment_status)}
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(order.created_at).toLocaleString()}
                             </p>
                           </div>
                         </div>
-
-                        <div className="flex flex-col md:items-end gap-2">
-                          <p className="font-display font-bold text-xl text-primary">
-                            {formatPrice(order.amount)}
-                          </p>
-                          <div className="flex items-center gap-2">
-                            {getStatusBadge(order.payment_status)}
+                        
+                        {/* Expanded items list */}
+                        {isBundle && isExpanded && cartItems && (
+                          <div className="mt-4 pt-4 border-t border-border">
+                            <p className="text-sm font-medium mb-3 text-muted-foreground">Items in this order:</p>
+                            <div className="space-y-2">
+                              {cartItems.map((item, idx) => (
+                                <div key={idx} className="flex items-center gap-3 text-sm bg-muted/30 rounded-lg px-3 py-2">
+                                  {getItemIcon(item.type)}
+                                  <span className="flex-1">{item.name}</span>
+                                  {item.quantity > 1 && (
+                                    <span className="text-muted-foreground">×{item.quantity}</span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            {new Date(order.created_at).toLocaleString()}
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
             )}
           </div>

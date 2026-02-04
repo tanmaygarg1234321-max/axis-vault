@@ -93,13 +93,13 @@ const RankCard = ({ rank, featured = false }: RankCardProps) => {
             <Button
               variant="hero"
               size="sm"
-              className="flex-1 h-10"
+              className="flex-1 h-10 text-xs sm:text-sm whitespace-nowrap px-2 sm:px-4"
               onClick={() => addToCart("rank", rank.id)}
               disabled={rankInCart}
               title={rankInCart ? "You already have a rank in your cart" : undefined}
             >
-              <ShoppingCart className="w-4 h-4 mr-1.5" />
-              {rankInCart ? "Rank in Cart" : "Add to Cart"}
+              <ShoppingCart className="w-4 h-4 shrink-0 mr-1" />
+              <span className="truncate">{rankInCart ? "In Cart" : "Add"}</span>
             </Button>
           </div>
         </div>

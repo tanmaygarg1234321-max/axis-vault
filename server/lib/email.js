@@ -44,11 +44,37 @@ async function sendViaAppsScript(to, subject, html) {
 }
 
 /**
+ * Generate items list HTML for bundle orders
+ * @param {Array} cartItems - Cart items array
+ * @returns {string}
+ */
+function generateItemsListHtml(cartItems) {
+  if (!cartItems || cartItems.length === 0) return "";
+  if (cartItems.length === 1 && cartItems[0].quantity === 1) return "";
+  
+  let html = `
+    <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: 12px; padding: 16px; margin-top: 16px;">
+      <div style="color: #f59e0b; font-weight: 600; margin-bottom: 12px;">📦 Items in your order:</div>
+  `;
+  
+  cartItems.forEach(item => {
+    const icon = item.type === 'rank' ? '👑' : item.type === 'crate' ? '📦' : '💰';
+    const qty = item.quantity > 1 ? ` × ${item.quantity}` : '';
+    html += `<div style="color: #e5e5e5; padding: 4px 0;">${icon} ${item.name}${qty}</div>`;
+  });
+  
+  html += `</div>`;
+  return html;
+}
+
+/**
  * Generate receipt email HTML
  * @param {object} orderData - Order data
  * @returns {string}
  */
 function generateReceiptEmail(orderData) {
+  const itemsListHtml = generateItemsListHtml(orderData.cartItems);
+  
   return `
     <!DOCTYPE html>
     <html>
@@ -90,7 +116,7 @@ function generateReceiptEmail(orderData) {
             <span class="value" style="font-family: monospace;">${orderData.orderId}</span>
           </div>
           <div class="detail-row">
-            <span class="label">Item Purchased</span>
+            <span class="label">Items Purchased</span>
             <span class="value" style="color: #f59e0b;">${orderData.productName}</span>
           </div>
           <div class="detail-row">
@@ -105,6 +131,8 @@ function generateReceiptEmail(orderData) {
             <span class="label">Amount Paid</span>
             <span class="amount">₹${orderData.amount}</span>
           </div>
+          
+          ${itemsListHtml}
           
           <div class="divider"></div>
           
