@@ -299,19 +299,21 @@ serve(async (req) => {
       }];
     }
 
-    // Get RCON credentials
-    const rconHost = Deno.env.get("RCON_HOST");
+    // Get RCON credentials - RCON_HOST should be just hostname, RCON_PORT is separate
+    const rconHostRaw = Deno.env.get("RCON_HOST") || "";
     const rconPort = parseInt(Deno.env.get("RCON_PORT") || "25584");
     const rconPassword = Deno.env.get("RCON_PASSWORD");
 
     let rcon: RCONClient | null = null;
     let rconConnected = false;
 
-    // Parse RCON host (may contain port like "host:port")
-    let actualHost = rconHost || "";
+    // Parse RCON host (remove port if accidentally included, e.g., "host:25583")
+    let actualHost = rconHostRaw;
     if (actualHost.includes(":")) {
       actualHost = actualHost.split(":")[0];
     }
+
+    console.log(`RCON config: host=${actualHost}, port=${rconPort}, hasPassword=${!!rconPassword}`);
 
     if (actualHost && rconPassword) {
       rcon = new RCONClient(actualHost, rconPort, rconPassword);
@@ -322,7 +324,7 @@ serve(async (req) => {
         console.error("Failed to connect to RCON:", err);
       }
     } else {
-      console.log("RCON credentials not configured");
+      console.log("RCON credentials not configured properly");
     }
 
     const commandResults: CommandResult[] = [];

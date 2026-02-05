@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,6 +39,7 @@ import {
   RotateCcw,
   Image,
   Terminal,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { formatPrice, ranks, crates, moneyPackages } from "@/lib/products";
@@ -71,6 +72,8 @@ const AdminShopConfig = ({ getAdminHeaders }: AdminShopConfigProps) => {
   const [editProduct, setEditProduct] = useState<ShopProduct | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [priceOverrides, setPriceOverrides] = useState<Record<string, any>>({});
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load products from static files and any overrides from database
   useEffect(() => {
@@ -195,6 +198,88 @@ const AdminShopConfig = ({ getAdminHeaders }: AdminShopConfigProps) => {
     setSaving(false);
   };
 
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!editProduct || !event.target.files || event.target.files.length === 0) return;
+    
+    const file = event.target.files[0];
+    
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+    
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image size must be less than 5MB");
+      return;
+    }
+    
+    setUploadingImage(true);
+    
+    try {
+      // Convert to base64
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64Data = reader.result as string;
+        
+        try {
+          const response = await invokeEdgeFunction<{ success: boolean; url: string }>("admin-action", {
+            headers: getAdminHeaders(),
+            body: {
+              action: "upload_preview_image",
+              productId: editProduct.id,
+              productType: editProduct.type,
+              imageData: base64Data,
+              fileName: file.name,
+            },
+          });
+          
+          if (response.url) {
+            // Update the edit product with new image URL
+            setEditProduct(prev => prev ? { ...prev, previewImage: response.url } : null);
+            
+            // Also update the price overrides
+            const key = `${editProduct.type}-${editProduct.id}`;
+            setPriceOverrides(prev => ({
+              ...prev,
+              [key]: {
+                ...(prev[key] || {}),
+                previewImage: response.url,
+              },
+            }));
+            
+            toast.success("Image uploaded successfully!");
+          }
+        } catch (err: any) {
+          toast.error(err.message || "Failed to upload image");
+        }
+        
+        setUploadingImage(false);
+      };
+      
+      reader.onerror = () => {
+        toast.error("Failed to read image file");
+        setUploadingImage(false);
+      };
+      
+      reader.readAsDataURL(file);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to upload image");
+      setUploadingImage(false);
+    }
+    
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const getProductPreviewImage = (product: ShopProduct): string => {
+    const key = `${product.type}-${product.id}`;
+    return priceOverrides[key]?.previewImage ?? product.previewImage ?? "";
+  };
+
   const handleEditSubmit = () => {
     if (!editProduct) return;
     
@@ -207,6 +292,7 @@ const AdminShopConfig = ({ getAdminHeaders }: AdminShopConfigProps) => {
         command: editProduct.command,
         description: editProduct.description,
         perks: editProduct.perks,
+        previewImage: editProduct.previewImage || prev[key]?.previewImage,
       },
     }));
     
@@ -347,19 +433,61 @@ const AdminShopConfig = ({ getAdminHeaders }: AdminShopConfigProps) => {
                 </div>
               )}
 
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <Label className="flex items-center gap-2">
                   <Image className="w-4 h-4" />
-                  Preview Image Path
+                  Preview Image
                 </Label>
+                
+                {/* Image Preview */}
+                {editProduct.previewImage && (
+                  <div className="relative w-full h-32 bg-muted/30 rounded-lg overflow-hidden">
+                    <img
+                      src={editProduct.previewImage}
+                      alt="Preview"
+                      className="w-full h-full object-contain"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = "none";
+                      }}
+                    />
+                  </div>
+                )}
+                
+                {/* Upload Button */}
+                <div className="flex gap-2">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleImageUpload}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingImage}
+                    className="flex-1"
+                  >
+                    {uploadingImage ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Upload className="w-4 h-4 mr-2" />
+                    )}
+                    {uploadingImage ? "Uploading..." : "Upload Image"}
+                  </Button>
+                </div>
+                
+                {/* Manual URL Input */}
                 <Input
                   value={editProduct.previewImage || ""}
                   onChange={(e) => setEditProduct({ ...editProduct, previewImage: e.target.value })}
                   className="bg-background/50"
-                  placeholder="/previews/rank-stranger.png"
+                  placeholder="Or enter image URL manually"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Upload preview images to /public/previews/ folder
+                  Upload an image or paste a URL. Recommended size: 400x300px
                 </p>
               </div>
             </div>
