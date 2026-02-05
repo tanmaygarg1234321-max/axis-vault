@@ -958,6 +958,80 @@ serve(async (req) => {
         break;
       }
 
+      case "upload_preview_image": {
+        // Handle base64 image upload to storage
+        const { productId, productType, imageData, fileName } = params;
+        
+        if (!imageData || !productId || !productType) {
+          throw new Error("Missing required parameters for image upload");
+        }
+
+        // Validate image data (should be base64)
+        if (!imageData.startsWith("data:image/")) {
+          throw new Error("Invalid image data format");
+        }
+
+        // Extract base64 content
+        const base64Match = imageData.match(/^data:image\/(\w+);base64,(.+)$/);
+        if (!base64Match) {
+          throw new Error("Invalid base64 image format");
+        }
+
+        const imageType = base64Match[1];
+        const base64Content = base64Match[2];
+        const binaryData = Uint8Array.from(atob(base64Content), c => c.charCodeAt(0));
+
+        // Generate filename
+        const finalFileName = `${productType}-${productId}.${imageType === "jpeg" ? "jpg" : imageType}`;
+
+        // Upload to storage bucket
+        const uploadResponse = await fetch(
+          `${supabaseUrl}/storage/v1/object/shop-previews/${finalFileName}`,
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${supabaseKey}`,
+              "Content-Type": `image/${imageType}`,
+              "x-upsert": "true",
+            },
+            body: binaryData,
+          }
+        );
+
+        if (!uploadResponse.ok) {
+          const errorText = await uploadResponse.text();
+          console.error("Upload failed:", errorText);
+          throw new Error(`Failed to upload image: ${errorText}`);
+        }
+
+        // Get public URL
+        const publicUrl = `${supabaseUrl}/storage/v1/object/public/shop-previews/${finalFileName}`;
+
+        // Log the upload
+        await fetch(`${supabaseUrl}/rest/v1/logs`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "apikey": supabaseKey,
+            "Authorization": `Bearer ${supabaseKey}`,
+            "Prefer": "return=minimal",
+          },
+          body: JSON.stringify({
+            type: "admin",
+            message: `Preview image uploaded for ${productType} ${productId} by ${payload?.username}`,
+            metadata: { action: "upload_preview_image", productId, productType, fileName: finalFileName, admin: payload?.username },
+          }),
+        });
+
+        return new Response(
+          JSON.stringify({ success: true, url: publicUrl }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          }
+        );
+      }
+
       default:
         throw new Error("Unknown action");
     }
