@@ -990,6 +990,7 @@ serve(async (req) => {
           {
             method: "POST",
             headers: {
+              "apikey": supabaseKey,
               "Authorization": `Bearer ${supabaseKey}`,
               "Content-Type": `image/${imageType}`,
               "x-upsert": "true",
