@@ -364,21 +364,24 @@ const AdminShopConfig = ({ getAdminHeaders }: AdminShopConfigProps) => {
                   <Terminal className="w-4 h-4" />
                   RCON Command
                 </Label>
-                <Input
+                <Textarea
                   value={editProduct.command || ""}
                   onChange={(e) => setEditProduct({ ...editProduct, command: e.target.value })}
                   className="bg-background/50 font-mono text-sm"
+                  rows={3}
                   placeholder={
                     editProduct.type === "rank" 
-                      ? "lp user {username} parent addtemp RankName 30d"
+                      ? "Example: lp user {username} parent addtemp mythic 30d"
                       : editProduct.type === "crate"
-                      ? "crates giveKey CrateName {username} 1"
-                      : "eco give {username} 1000000"
+                      ? "Example: crates key give {username} astro_crate 1"
+                      : "Example: eco give {username} 10000000"
                   }
                 />
                 <p className="text-xs text-muted-foreground">
-                  Use {"{username}"} as a placeholder for the player's Minecraft username.
-                  {editProduct.type === "money" && " Use {amount} for the money amount."}
+                  Use <code className="bg-muted px-1 rounded">{"{username}"}</code> as a placeholder for the player's Minecraft username.
+                  {editProduct.type === "money" && (
+                    <> Use <code className="bg-muted px-1 rounded">{"{amount}"}</code> for the money amount.</>
+                  )}
                 </p>
               </div>
 
