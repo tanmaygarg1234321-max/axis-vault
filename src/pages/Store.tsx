@@ -10,10 +10,12 @@ import { Crown, Package, Coins } from "lucide-react";
 import { ranks, crates, moneyPackages } from "@/lib/products";
 import { Helmet } from "react-helmet-async";
 import { usePopularRank } from "@/hooks/usePopularRank";
+import { usePriceOverrides } from "@/hooks/usePriceOverrides";
 
 const Store = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { popularRankId } = usePopularRank();
+  const { getOverridePrice, getPreviewImage, getOverrideName, getOverridePerks, getOverrideDescription } = usePriceOverrides();
   const [activeTab, setActiveTab] = useState(searchParams.get("tab") || "ranks");
 
   useEffect(() => {
@@ -92,6 +94,10 @@ const Store = () => {
                       key={rank.id}
                       rank={rank}
                       featured={popularRankId === rank.id}
+                      overridePrice={getOverridePrice("rank", rank.id)}
+                      overrideName={getOverrideName("rank", rank.id)}
+                      overridePerks={getOverridePerks("rank", rank.id)}
+                      previewImage={getPreviewImage("rank", rank.id)}
                     />
                   ))}
                 </div>
@@ -109,7 +115,14 @@ const Store = () => {
                 </div>
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 max-w-5xl mx-auto">
                   {crates.map((crate) => (
-                    <CrateCard key={crate.id} crate={crate} />
+                    <CrateCard
+                      key={crate.id}
+                      crate={crate}
+                      overridePrice={getOverridePrice("crate", crate.id)}
+                      overrideName={getOverrideName("crate", crate.id)}
+                      overrideDescription={getOverrideDescription("crate", crate.id)}
+                      previewImage={getPreviewImage("crate", crate.id)}
+                    />
                   ))}
                 </div>
               </TabsContent>

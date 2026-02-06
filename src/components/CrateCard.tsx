@@ -7,11 +7,20 @@ import { useCart } from "@/contexts/CartContext";
 
 interface CrateCardProps {
   crate: Crate;
+  overridePrice?: number | null;
+  overrideName?: string | null;
+  overrideDescription?: string | null;
+  previewImage?: string | null;
 }
 
-const CrateCard = ({ crate }: CrateCardProps) => {
+const CrateCard = ({ crate, overridePrice, overrideName, overrideDescription, previewImage }: CrateCardProps) => {
   const [previewOpen, setPreviewOpen] = useState(false);
   const { addToCart } = useCart();
+
+  const displayName = overrideName || crate.name;
+  const displayPrice = overridePrice ?? crate.price;
+  const displayDescription = overrideDescription || crate.description;
+  const displayImage = previewImage || `/previews/crate-${crate.id}.png`;
 
   return (
     <>
@@ -25,10 +34,10 @@ const CrateCard = ({ crate }: CrateCardProps) => {
             </div>
             <div>
               <span className="font-display font-bold text-lg text-white tracking-wider uppercase block">
-                {crate.name}
+                {displayName}
               </span>
               <span className="font-display font-bold text-xl text-white">
-                {formatPrice(crate.price)}
+                {formatPrice(displayPrice)}
               </span>
             </div>
           </div>
@@ -37,7 +46,7 @@ const CrateCard = ({ crate }: CrateCardProps) => {
         {/* Description */}
         <div className="p-5 space-y-4">
           <p className="text-muted-foreground text-sm leading-relaxed">
-            {crate.description}
+            {displayDescription}
           </p>
 
           {/* Instant delivery badge */}
@@ -73,8 +82,8 @@ const CrateCard = ({ crate }: CrateCardProps) => {
       <PreviewModal
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
-        title={crate.name}
-        imageSrc={`/previews/crate-${crate.id}.png`}
+        title={displayName}
+        imageSrc={displayImage}
       />
     </>
   );

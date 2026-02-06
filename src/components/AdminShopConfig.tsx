@@ -581,6 +581,7 @@ const AdminShopConfig = ({ getAdminHeaders }: AdminShopConfigProps) => {
                               price: getProductPrice(product),
                               name: getProductName(product),
                               command: getProductCommand(product),
+                              previewImage: getProductPreviewImage(product),
                             });
                             setEditDialogOpen(true);
                           }}
@@ -660,6 +661,7 @@ const AdminShopConfig = ({ getAdminHeaders }: AdminShopConfigProps) => {
                               price: getProductPrice(product),
                               name: getProductName(product),
                               command: getProductCommand(product),
+                              previewImage: getProductPreviewImage(product),
                             });
                             setEditDialogOpen(true);
                           }}
@@ -739,6 +741,7 @@ const AdminShopConfig = ({ getAdminHeaders }: AdminShopConfigProps) => {
                               price: getProductPrice(product),
                               name: getProductName(product),
                               command: getProductCommand(product),
+                              previewImage: getProductPreviewImage(product),
                             });
                             setEditDialogOpen(true);
                           }}
