@@ -8,12 +8,21 @@ import { useCart } from "@/contexts/CartContext";
 interface RankCardProps {
   rank: Rank;
   featured?: boolean;
+  overridePrice?: number | null;
+  overrideName?: string | null;
+  overridePerks?: string[] | null;
+  previewImage?: string | null;
 }
 
-const RankCard = ({ rank, featured = false }: RankCardProps) => {
+const RankCard = ({ rank, featured = false, overridePrice, overrideName, overridePerks, previewImage }: RankCardProps) => {
   const [previewOpen, setPreviewOpen] = useState(false);
   const { addToCart, hasRankInCart } = useCart();
   const rankInCart = hasRankInCart();
+
+  const displayName = overrideName || rank.name;
+  const displayPrice = overridePrice ?? rank.price;
+  const displayPerks = overridePerks || rank.perks;
+  const displayImage = previewImage || `/previews/rank-${rank.id}.png`;
 
   return (
     <>
@@ -38,7 +47,7 @@ const RankCard = ({ rank, featured = false }: RankCardProps) => {
           <div className="relative z-10">
             <div className="flex items-center justify-between">
               <span className="font-display font-bold text-xl text-white tracking-wider uppercase drop-shadow-lg">
-                {rank.name}
+                {displayName}
               </span>
               {featured && (
                 <span className="bg-white/25 backdrop-blur-sm text-white text-xs px-3 py-1 rounded-full font-bold uppercase tracking-wide">
@@ -48,7 +57,7 @@ const RankCard = ({ rank, featured = false }: RankCardProps) => {
             </div>
             <div className="flex items-baseline gap-2 mt-2">
               <span className="font-display font-bold text-3xl text-white drop-shadow-lg">
-                {formatPrice(rank.price)}
+                {formatPrice(displayPrice)}
               </span>
               <span className="text-white/80 text-sm font-medium">/ 30 days</span>
             </div>
@@ -58,7 +67,7 @@ const RankCard = ({ rank, featured = false }: RankCardProps) => {
         {/* Perks */}
         <div className="p-5 space-y-4">
           <ul className="space-y-2.5">
-            {rank.perks.slice(0, 5).map((perk, index) => (
+            {displayPerks.slice(0, 5).map((perk, index) => (
               <li key={index} className="flex items-start gap-2.5 text-sm">
                 <div className={`w-5 h-5 rounded-full bg-gradient-to-r ${rank.color} flex items-center justify-center shrink-0 mt-0.5`}>
                   <Check className="w-3 h-3 text-white" />
@@ -66,9 +75,9 @@ const RankCard = ({ rank, featured = false }: RankCardProps) => {
                 <span className="text-muted-foreground leading-snug">{perk}</span>
               </li>
             ))}
-            {rank.perks.length > 5 && (
+            {displayPerks.length > 5 && (
               <li className="text-xs text-primary font-medium pl-8">
-                +{rank.perks.length - 5} more perks
+                +{displayPerks.length - 5} more perks
               </li>
             )}
           </ul>
@@ -108,8 +117,8 @@ const RankCard = ({ rank, featured = false }: RankCardProps) => {
       <PreviewModal
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
-        title={`${rank.name} Rank`}
-        imageSrc={`/previews/rank-${rank.id}.png`}
+        title={`${displayName} Rank`}
+        imageSrc={displayImage}
       />
     </>
   );

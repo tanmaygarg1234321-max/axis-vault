@@ -1,44 +1,78 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-interface PriceOverride {
-  productType: string;
-  productId: string;
-  overridePrice: number;
+interface ShopConfig {
+  [key: string]: {
+    price?: number;
+    name?: string;
+    command?: string;
+    description?: string;
+    perks?: string[];
+    previewImage?: string;
+    amount?: string;
+    amountInt?: number;
+  };
 }
 
 export const usePriceOverrides = () => {
-  const [overrides, setOverrides] = useState<PriceOverride[]>([]);
+  const [config, setConfig] = useState<ShopConfig>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetchOverrides();
+    fetchConfig();
   }, []);
 
-  const fetchOverrides = async () => {
+  const fetchConfig = async () => {
     try {
       const { data, error } = await supabase
         .from("site_settings")
-        .select("*")
-        .eq("key", "price_overrides")
+        .select("value")
+        .eq("key", "shop_config")
         .single();
 
       if (data && !error) {
         const parsed = JSON.parse(data.value);
-        setOverrides(parsed);
+        setConfig(parsed || {});
       }
     } catch (err) {
-      console.error("Error fetching price overrides:", err);
+      console.error("Error fetching shop config:", err);
     }
     setLoading(false);
   };
 
   const getOverridePrice = (productType: string, productId: string): number | null => {
-    const override = overrides.find(
-      (o) => o.productType === productType && o.productId === productId
-    );
-    return override?.overridePrice ?? null;
+    const key = `${productType}-${productId}`;
+    return config[key]?.price ?? null;
   };
 
-  return { overrides, loading, getOverridePrice, refetch: fetchOverrides };
+  const getPreviewImage = (productType: string, productId: string): string | null => {
+    const key = `${productType}-${productId}`;
+    return config[key]?.previewImage ?? null;
+  };
+
+  const getOverrideName = (productType: string, productId: string): string | null => {
+    const key = `${productType}-${productId}`;
+    return config[key]?.name ?? null;
+  };
+
+  const getOverridePerks = (productType: string, productId: string): string[] | null => {
+    const key = `${productType}-${productId}`;
+    return config[key]?.perks ?? null;
+  };
+
+  const getOverrideDescription = (productType: string, productId: string): string | null => {
+    const key = `${productType}-${productId}`;
+    return config[key]?.description ?? null;
+  };
+
+  return {
+    config,
+    loading,
+    getOverridePrice,
+    getPreviewImage,
+    getOverrideName,
+    getOverridePerks,
+    getOverrideDescription,
+    refetch: fetchConfig,
+  };
 };
