@@ -565,9 +565,9 @@ const AdminShopConfig = ({ getAdminHeaders }: AdminShopConfigProps) => {
                         className={`w-24 h-8 ${isModified ? "border-primary" : ""}`}
                       />
                     </TableCell>
-                    <TableCell>
-                      <code className="text-xs bg-muted px-2 py-1 rounded">
-                        lp user ... addtemp {getProductCommand(product)} 30d
+                    <TableCell className="max-w-[200px]">
+                      <code className="text-xs bg-muted px-2 py-1 rounded block truncate" title={getProductCommand(product)}>
+                        {getProductCommand(product) || "lp user {username} parent addtemp ..."}
                       </code>
                     </TableCell>
                     <TableCell className="text-right">
@@ -645,9 +645,9 @@ const AdminShopConfig = ({ getAdminHeaders }: AdminShopConfigProps) => {
                         className={`w-24 h-8 ${isModified ? "border-primary" : ""}`}
                       />
                     </TableCell>
-                    <TableCell>
-                      <code className="text-xs bg-muted px-2 py-1 rounded">
-                        crates giveKey {getProductCommand(product)} ...
+                    <TableCell className="max-w-[200px]">
+                      <code className="text-xs bg-muted px-2 py-1 rounded block truncate" title={getProductCommand(product)}>
+                        {getProductCommand(product) || "crates key give {username} ..."}
                       </code>
                     </TableCell>
                     <TableCell className="text-right">
@@ -725,9 +725,9 @@ const AdminShopConfig = ({ getAdminHeaders }: AdminShopConfigProps) => {
                         className={`w-24 h-8 ${isModified ? "border-primary" : ""}`}
                       />
                     </TableCell>
-                    <TableCell>
-                      <code className="text-xs bg-muted px-2 py-1 rounded">
-                        eco give ... {product.amountInt}
+                    <TableCell className="max-w-[200px]">
+                      <code className="text-xs bg-muted px-2 py-1 rounded block truncate" title={getProductCommand(product)}>
+                        {getProductCommand(product) || "eco give {username} {amount}"}
                       </code>
                     </TableCell>
                     <TableCell className="text-right">
