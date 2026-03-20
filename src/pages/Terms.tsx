@@ -6,8 +6,8 @@ const Terms = () => {
   return (
     <>
       <Helmet>
-        <title>Terms & Refund Policy - Axis Economy Store</title>
-        <meta name="description" content="Terms of service and refund policy for Axis Economy Store." />
+        <title>Terms & Refund Policy - Aether Vanilla Store</title>
+        <meta name="description" content="Terms of service and refund policy for Aether Vanilla Store." />
       </Helmet>
 
       <div className="min-h-screen bg-background">
@@ -20,17 +20,16 @@ const Terms = () => {
             </h1>
 
             <div className="glass-card p-8 space-y-8">
-              {/* Terms of Service */}
               <section>
                 <h2 className="font-display text-xl font-bold mb-4 text-primary">
                   Terms of Service
                 </h2>
                 <div className="space-y-4 text-muted-foreground">
                   <p>
-                    By purchasing from Axis Economy Store, you agree to the following terms:
+                    By purchasing from Aether Vanilla Store, you agree to the following terms:
                   </p>
                   <ul className="list-disc list-inside space-y-2 pl-4">
-                    <li>All purchases are digital products for use on Axis SMP Minecraft server.</li>
+                    <li>All purchases are digital products for use on Aether Vanilla Minecraft server.</li>
                     <li>You must provide accurate Minecraft and Discord usernames.</li>
                     <li>Purchased items are non-transferable unless specified.</li>
                     <li>We reserve the right to ban players who abuse or chargeback purchases.</li>
@@ -40,7 +39,6 @@ const Terms = () => {
                 </div>
               </section>
 
-              {/* Refund Policy */}
               <section>
                 <h2 className="font-display text-xl font-bold mb-4 text-primary">
                   Refund Policy
@@ -68,7 +66,6 @@ const Terms = () => {
                 </div>
               </section>
 
-              {/* Delivery */}
               <section>
                 <h2 className="font-display text-xl font-bold mb-4 text-primary">
                   Delivery
@@ -88,7 +85,6 @@ const Terms = () => {
                 </div>
               </section>
 
-              {/* Payment */}
               <section>
                 <h2 className="font-display text-xl font-bold mb-4 text-primary">
                   Payment & Security
@@ -103,7 +99,6 @@ const Terms = () => {
                 </div>
               </section>
 
-              {/* Contact */}
               <section>
                 <h2 className="font-display text-xl font-bold mb-4 text-primary">
                   Contact Us
@@ -125,10 +120,10 @@ const Terms = () => {
                     <li>
                       Email:{" "}
                       <a
-                        href="mailto:axiseconomy@gmail.com"
+                        href="mailto:aethervanilla@gmail.com"
                         className="text-primary hover:underline"
                       >
-                        axiseconomy@gmail.com
+                        aethervanilla@gmail.com
                       </a>
                     </li>
                   </ul>

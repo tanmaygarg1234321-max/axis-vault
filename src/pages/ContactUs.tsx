@@ -9,10 +9,10 @@ const ContactUs = () => {
   return (
     <>
       <Helmet>
-        <title>Contact Us - Axis Economy Store</title>
+        <title>Contact Us - Aether Vanilla Store</title>
         <meta
           name="description"
-          content="Contact Axis Economy Store support on Discord or by email."
+          content="Contact Aether Vanilla Store support on Discord or by email."
         />
         {canonical ? <link rel="canonical" href={canonical} /> : null}
       </Helmet>
@@ -50,10 +50,10 @@ const ContactUs = () => {
                 <li>
                   Email:{" "}
                   <a
-                    href="mailto:axiseconomy@gmail.com"
+                    href="mailto:aethervanilla@gmail.com"
                     className="text-primary hover:underline"
                   >
-                    axiseconomy@gmail.com
+                    aethervanilla@gmail.com
                   </a>
                 </li>
               </ul>

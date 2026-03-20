@@ -12,10 +12,10 @@ const ShippingPolicy = () => {
   return (
     <>
       <Helmet>
-        <title>Shipping Policy - Axis Economy Store</title>
+        <title>Shipping Policy - Aether Vanilla Store</title>
         <meta
           name="description"
-          content="Shipping policy for Axis Economy Store. Digital deliveries are typically completed within 5 minutes."
+          content="Shipping policy for Aether Vanilla Store. Digital deliveries are typically completed within 5 minutes."
         />
         {canonical ? <link rel="canonical" href={canonical} /> : null}
       </Helmet>
@@ -36,7 +36,7 @@ const ShippingPolicy = () => {
                 </h2>
                 <div className="space-y-3 text-muted-foreground">
                   <p>
-                    All products sold here are digital items delivered in-game on the Axis SMP
+                    All products sold here are digital items delivered in-game on the Aether Vanilla
                     Minecraft server.
                   </p>
                   <ul className="list-disc list-inside space-y-2 pl-4">

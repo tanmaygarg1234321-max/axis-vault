@@ -43,8 +43,8 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-const CART_STORAGE_KEY = "axis-eco-cart";
-const SAVED_STORAGE_KEY = "axis-eco-saved";
+const CART_STORAGE_KEY = "aether-vanilla-cart";
+const SAVED_STORAGE_KEY = "aether-vanilla-saved";
 
 export const CartProvider = ({ children }: { children: ReactNode }) => {
   const [items, setItems] = useState<CartItem[]>(() => {

@@ -167,7 +167,7 @@ const PurchaseHistory = () => {
     return (
       <>
         <Helmet>
-          <title>Purchase History - Axis Economy Store</title>
+          <title>Purchase History - Aether Vanilla Store</title>
         </Helmet>
         <div className="min-h-screen bg-background">
           <Header />
@@ -201,7 +201,7 @@ const PurchaseHistory = () => {
   return (
     <>
       <Helmet>
-        <title>Purchase History - Axis Economy Store</title>
+        <title>Purchase History - Aether Vanilla Store</title>
         <meta name="description" content="View your purchase history and order status" />
       </Helmet>
 

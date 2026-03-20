@@ -118,8 +118,8 @@ const Auth = () => {
   return (
     <>
       <Helmet>
-        <title>Login - Axis Economy Store</title>
-        <meta name="description" content="Sign in to your Axis Economy Store account" />
+        <title>Login - Aether Vanilla Store</title>
+        <meta name="description" content="Sign in to your Aether Vanilla Store account" />
       </Helmet>
 
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
