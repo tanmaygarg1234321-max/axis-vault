@@ -674,7 +674,7 @@ const Admin = () => {
     return (
       <>
         <Helmet>
-          <title>Admin Login - Axis Economy Store</title>
+          <title>Admin Login - Aether Vanilla Store</title>
         </Helmet>
         <div className="min-h-screen bg-background flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-grid-pattern opacity-20" />
@@ -724,7 +724,7 @@ const Admin = () => {
   return (
     <>
       <Helmet>
-        <title>Admin Panel - Axis Economy Store</title>
+        <title>Admin Panel - Aether Vanilla Store</title>
       </Helmet>
       
       {/* Clear Data Dialog */}
@@ -869,7 +869,7 @@ const Admin = () => {
               <Shield className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <span className="font-display font-bold text-lg">Axis Admin</span>
+              <span className="font-display font-bold text-lg">Aether Admin</span>
               <p className="text-xs text-muted-foreground">Management Console</p>
             </div>
           </div>
@@ -1858,7 +1858,7 @@ const Admin = () => {
                         <div>
                           <p className="text-sm font-medium text-blue-400">Preview Note</p>
                           <p className="text-xs text-muted-foreground mt-1">
-                            The email will be wrapped in a branded template with the Axis Economy Store header and footer.
+                            The email will be wrapped in a branded template with the Aether Vanilla Store header and footer.
                             You can use HTML tags like &lt;h2&gt;, &lt;p&gt;, &lt;strong&gt;, &lt;a href="..."&gt;, etc.
                           </p>
                         </div>
@@ -1950,7 +1950,7 @@ const Admin = () => {
 <p>Hello player!</p>
 <p>We have an important announcement for our community:</p>
 <p><strong>[Your announcement here]</strong></p>
-<p>Thank you for being part of the Axis Economy community!</p>
+<p>Thank you for being part of the Aether Vanilla community!</p>
 <p>See you in-game! 🎮</p>`);
                       }}
                     >
@@ -2059,11 +2059,11 @@ const Admin = () => {
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
                       <Label className="text-sm text-muted-foreground">Admin Email</Label>
-                      <Input value={settings.admin_email || "admin@axisstore.com"} disabled className="bg-background/50" />
+                      <Input value={settings.admin_email || "admin@aethervanilla.com"} disabled className="bg-background/50" />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-sm text-muted-foreground">Support Email</Label>
-                      <Input value={settings.support_email || "support@axisstore.com"} disabled className="bg-background/50" />
+                      <Input value={settings.support_email || "support@aethervanilla.com"} disabled className="bg-background/50" />
                     </div>
                   </CardContent>
                 </Card>

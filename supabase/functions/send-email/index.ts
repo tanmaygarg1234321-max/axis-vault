@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 // Google Apps Script Web App URL
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzEh77d-0DaOvbT7ZEmoy3OPo-2VWfJK4KFts3EfTwv5H_kcc7fNLcdJ5aGBpkAYC2i/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzz_PevhSgKOh2qrqYjZMnauZP7OIa-SzyGGFue8kBmYi57AYKNSGoUsiB7MARUJmry/exec";
 
 interface EmailRequest {
   type: "receipt" | "failed" | "expiry_reminder" | "bulk";

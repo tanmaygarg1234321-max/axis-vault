@@ -13,11 +13,11 @@ const Footer = () => {
                 <Crown className="w-5 h-5 text-primary-foreground" />
               </div>
               <span className="font-display font-bold text-xl tracking-wider">
-                AXIS <span className="text-primary">ECO</span>
+                AETHER <span className="text-primary">VANILLA</span>
               </span>
             </Link>
             <p className="text-muted-foreground text-sm">
-              The official store for Axis SMP. Buy ranks, crates, and in-game money securely.
+              The official store for Aether Vanilla. Buy ranks, crates, and in-game money securely.
             </p>
           </div>
 
@@ -58,11 +58,11 @@ const Footer = () => {
                 Discord Server
               </a>
               <a
-                href="mailto:axiseconomy@gmail.com"
+                href="mailto:aethervanilla@gmail.com"
                 className="flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors text-sm"
               >
                 <Mail className="w-4 h-4" />
-                axiseconomy@gmail.com
+                aethervanilla@gmail.com
               </a>
             </div>
           </div>
@@ -100,7 +100,7 @@ const Footer = () => {
 
         <div className="mt-12 pt-8 border-t border-border/50 flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-muted-foreground text-sm">
-            © {new Date().getFullYear()} Axis Economy Store. All rights reserved.
+            © {new Date().getFullYear()} Aether Vanilla Store. All rights reserved.
           </p>
           <p className="text-muted-foreground text-xs">
             Payments secured by Razorpay

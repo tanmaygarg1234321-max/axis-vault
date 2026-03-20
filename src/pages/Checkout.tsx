@@ -159,14 +159,14 @@ const Checkout = () => {
       // Build product name for Razorpay
       const productDescription = selectedItems.length === 1
         ? getProductName(selectedItems[0].type, selectedItems[0].productId)
-        : `${selectedItems.length} items from Axis Store`;
+        : `${selectedItems.length} items from Aether Vanilla Store`;
 
       // Open Razorpay checkout
       const options = {
         key: razorpayKeyId,
         amount: finalPrice * 100,
         currency: "INR",
-        name: "Axis Economy Store",
+        name: "Aether Vanilla Store",
         description: productDescription,
         order_id: razorpayOrderId,
         prefill: {
@@ -249,7 +249,7 @@ const Checkout = () => {
     return (
       <>
         <Helmet>
-          <title>Checkout - Axis Economy Store</title>
+          <title>Checkout - Aether Vanilla Store</title>
         </Helmet>
         <div className="min-h-screen bg-background">
           <Header />
@@ -290,7 +290,7 @@ const Checkout = () => {
   return (
     <>
       <Helmet>
-        <title>Checkout - Axis Economy Store</title>
+        <title>Checkout - Aether Vanilla Store</title>
         <meta name="description" content="Complete your purchase securely with Razorpay." />
       </Helmet>
 

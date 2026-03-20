@@ -6,7 +6,7 @@ const Maintenance = () => {
   return (
     <>
       <Helmet>
-        <title>Maintenance - Axis Economy Store</title>
+        <title>Maintenance - Aether Vanilla Store</title>
       </Helmet>
 
       <div className="min-h-screen bg-background flex items-center justify-center p-4">

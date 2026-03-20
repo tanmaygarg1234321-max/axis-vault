@@ -58,7 +58,7 @@ const Header = () => {
               <Crown className="w-5 h-5 text-primary-foreground" />
             </div>
             <span className="font-display font-bold text-xl tracking-wider text-foreground">
-              AXIS <span className="text-primary">ECO</span>
+              AETHER <span className="text-primary">VANILLA</span>
             </span>
           </Link>
 

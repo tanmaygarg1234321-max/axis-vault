@@ -33,8 +33,8 @@ const Store = () => {
   return (
     <>
       <Helmet>
-        <title>Store - Axis Economy Store</title>
-        <meta name="description" content="Browse and purchase ranks, crates, and in-game money for Axis SMP. Secure payments and instant delivery." />
+        <title>Store - Aether Vanilla Store</title>
+        <meta name="description" content="Browse and purchase ranks, crates, and in-game money for Aether Vanilla. Secure payments and instant delivery." />
       </Helmet>
 
       <div className="min-h-screen bg-background">

@@ -58,7 +58,7 @@ const PaymentStatus = () => {
   return (
     <>
       <Helmet>
-        <title>{isSuccess ? "Payment Successful" : "Payment Failed"} - Axis Economy Store</title>
+        <title>{isSuccess ? "Payment Successful" : "Payment Failed"} - Aether Vanilla Store</title>
       </Helmet>
 
       <div className="min-h-screen bg-background">

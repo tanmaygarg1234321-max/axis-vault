@@ -11,10 +11,10 @@ const PrivacyPolicy = () => {
   return (
     <>
       <Helmet>
-        <title>Privacy Policy - Axis Economy Store</title>
+        <title>Privacy Policy - Aether Vanilla Store</title>
         <meta
           name="description"
-          content="Privacy policy for Axis Economy Store, including what information we collect and how we use it."
+          content="Privacy policy for Aether Vanilla Store, including what information we collect and how we use it."
         />
         {canonical ? <link rel="canonical" href={canonical} /> : null}
       </Helmet>
@@ -78,10 +78,10 @@ const PrivacyPolicy = () => {
                   <p>
                     If you have privacy questions, email{" "}
                     <a
-                      href="mailto:axiseconomy@gmail.com"
+                      href="mailto:aethervanilla@gmail.com"
                       className="text-primary hover:underline"
                     >
-                      axiseconomy@gmail.com
+                      aethervanilla@gmail.com
                     </a>
                     .
                   </p>

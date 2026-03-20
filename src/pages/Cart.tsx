@@ -230,7 +230,7 @@ const Cart = () => {
   return (
     <>
       <Helmet>
-        <title>Cart - Axis Economy Store</title>
+        <title>Cart - Aether Vanilla Store</title>
         <meta name="description" content="Review your cart and proceed to checkout." />
       </Helmet>
 

@@ -1,5 +1,5 @@
 /**
- * Express.js Server for Axis Economy Store
+ * Express.js Server for Aether Vanilla Store
  * Replaces Supabase Edge Functions for VPS/Pterodactyl deployment
  */
 
@@ -61,7 +61,7 @@ app.use((err, req, res, next) => {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`
 ╔═══════════════════════════════════════════════════════════╗
-║           Axis Economy Store - Express Server              ║
+║           Aether Vanilla Store - Express Server              ║
 ╠═══════════════════════════════════════════════════════════╣
 ║  Server running on port: ${PORT}                            ║
 ║  Environment: ${process.env.NODE_ENV || "development"}                              ║
